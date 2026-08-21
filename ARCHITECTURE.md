@@ -62,6 +62,29 @@ flowchart LR
 | Rollouts | Recall (`abort`) / roll-forward (`promote-full`) / soak (analysis) | kit-fleet |
 | Webhook receiver | Eventing masuk: notifications ArgoCD → spawn agent | kit-fleet |
 
+## Layer: Data → Logic → Action → Security
+
+Cara baca lain atas komponen yang sama di atas — per tanggung-jawab, bukan per proses.
+
+```mermaid
+flowchart LR
+    D[Data<br/>TypeDB context graph] --> L[Logic<br/>deepagents orchestrator + subagents]
+    L --> A[Action<br/>Tools: ontology_write / argocd_* / rollout_*]
+    S{{Security<br/>HITL · RBAC · sandbox · audit}}
+    S -. gate sebelum eksekusi .-> A
+    S -. scope tool+permission .-> L
+    S -. audit trail .-> D
+```
+
+| Layer | Isi | Kit |
+|---|---|---|
+| **Data** | Schema graph (entity/relation), finding, audit trail, evidence | kit-ontology |
+| **Logic** | Orchestrator + subagents (Hunt/Challenge/Triage); reasoning TypeQL (`blast`, `owner-of`) jalan *di dalam* Data layer, bukan di Logic | kit-agent-tools, kit-workflow |
+| **Action** | Tools yang mengubah state eksternal: `ontology_write`, `argocd_sync/rollback`, `rollout_recall/promote` | kit-agent-tools, kit-fleet |
+| **Security** | HITL gate (V1), RBAC machine account (V8), sandbox isolasi (V13/V18), permissions per-subagent, checkpointer durable (V19) | kit-agent-tools, kit-sandboxes |
+
+**Catatan jujur**: Security ⊥ murni tahap terakhir yang jalan setelah Action — dia **mengontrol** ketiga layer lain sepanjang alur: gate HITL berhenti tool call **sebelum** Action tereksekusi (bukan review sesudahnya), sandbox+permissions membatasi apa yang Logic *bisa* coba dari awal, RBAC membatasi Action yang boleh dipanggil, dan audit trail (Data) mencatat semuanya sesudahnya. Diagram di atas urutan Data→Logic→Action linear (tiap output jadi input berikut), Security digambar sbg governing layer yang membungkus, bukan node ke-4 yang sequential.
+
 ## Loop → alur runtime
 
 ```mermaid
