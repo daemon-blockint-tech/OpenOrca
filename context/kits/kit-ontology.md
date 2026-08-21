@@ -142,22 +142,26 @@ match $f isa finding, has id "F-123";
 update $f has verdict "false-positive", has finding-state "dismissed";
 
 # audit: catat aksi agent (V7) — relation, bukan entity; subject = service yang ter-recall
+# WAJIB keyword `links` eksplisit — terverifikasi live 2026-08-22 (SPEC §B), `$a (subject:$x) isa T`
+# ⊥ valid (error WCP4: "Could not determine the type of insert variable").
 match $svc isa service, has id "SVC-payments";
 insert
-  $a (subject: $svc) isa recall-action,
+  $a isa recall-action,
+    links (subject: $svc),
     has id "A-456", has evidence "{...json argocd response...}", has occurred-at 2026-08-21T00:00:00;
 
 # query terstruktur per jenis aksi — inilah yang tak bisa dilakukan pas agent-action masih entity+enum
 match
   $svc isa service, has id "SVC-payments";
-  $a (subject: $svc) isa recall-action, has occurred-at $t;
+  $a isa recall-action, links (subject: $svc), has occurred-at $t;
 fetch { "recalled_at": $t };
 ```
 
 ## Acceptance criteria
 
-1. Schema apply sukses ke db `openorca` (one-shot `POST /v1/query`, tx schema) → `answerType: "ok"`.
-2. Insert service A→B→C→A (siklus) → `blast(A)` return {A,B,C}, terminate. (bukti tabling jalan)
+1. Schema apply sukses ke db `openorca` (one-shot `POST /v1/query`, tx schema) → `answerType: "ok"`. **✓ terverifikasi live 2026-08-22.**
+2. Insert service A→B→C→A (siklus) → `blast(A)` return {A,B,C}, terminate. (bukti tabling jalan) **✓ terverifikasi live 2026-08-22, 0.028s.**
+2b. `isa agent-action` langsung (abstract) → ditolak (`INF11` type inference error). Insert lewat subtype (`recall-action` dll.) + `links (subject: ...)` → sukses; query per-kind (mis. "semua recall-action utk service X") kembalikan hasil terstruktur, ⊥ perlu parse `evidence`. **✓ terverifikasi live 2026-08-22.**
 3. `open-findings` + `reduce count` → jumlah benar; hasil >10k di-reduce di TypeQL, ⊥ 206 bocor ke agent (V2).
 4. ∀ attribute ber-`@values` menolak nilai di luar enum → error annotation, bukan data korup.
 5. `owner-of` di service tanpa ownership → hasil kosong, ⊥ error.

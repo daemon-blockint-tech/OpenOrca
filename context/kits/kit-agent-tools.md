@@ -29,7 +29,7 @@ rollout_promote   | destruk | !    | !        | action=promote-full
 ### ontology_write
 - args: `{ query: string }` — insert/update/put/delete.
 - Behavior: one-shot `commit: true` (auto-commit write). Error annotation TypeDB → teruskan verbatim ke agent (query salah = feedback berguna).
-- Audit: tool ini SARANA audit — pemanggil wajib pola `match $subj ...; insert $a (subject: $subj) isa <kind>-action, has id ..., ...;` (relation, subtype konkret — kit-ontology.md §Catatan) utk aksi non-graph.
+- Audit: tool ini SARANA audit — pemanggil wajib pola `match $subj ...; insert $a isa <kind>-action, links (subject: $subj), has id ..., ...;` (relation, subtype konkret, keyword `links` wajib — kit-ontology.md §Catatan) utk aksi non-graph.
 
 ### argocd_app_status
 - args: `{ app: string }`.
@@ -89,6 +89,6 @@ const agent = createDeepAgent({
 1. `createDeepAgent` dgn 8 tools ⊥ throw `TOOL_NAME_COLLISION` (V9).
 2. Query >10k rows → `ontology_query` throw pesan reduce/limit; ⊥ return parsial (V2).
 3. Restart TypeDB di tengah sesi → tool berikutnya sukses via re-signin (V3); matikan TypeDB → error surfaced, ⊥ retry loop.
-4. `rollout_recall` pada Rollout live → `status.abort=true` di cluster + row `agent-action` action-kind `recall` di graph (V4, V7).
+4. `rollout_recall` pada Rollout live → `status.abort=true` di cluster + row `recall-action (subject: <service>)` di graph (V4, V7).
 5. `argocd_rollback` pada app autosync-on → autosync off dulu → rollback sukses (⊥ FailedPrecondition bocor) (V5).
 6. Panggil `argocd_sync` → eksekusi TERTAHAN di interrupt sampai resume manusia (V1) — uji via checkpointer + `Command` resume.

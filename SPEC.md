@@ -65,7 +65,7 @@ V19: checkpointer produksi = Postgres (self-hosted); MemorySaver/SqliteSaver ⊥
 ```
 id|status|task|cites
 T1|.|dev infra: TypeDB 3.x (docker) + kind + ArgoCD + Rollouts, script bootstrap|I.env
-T2|x|apply schema.tql + functions ke db openorca — DONE 2026-08-22, live: db `openorca`, blast(A) siklus A-B-C-A → {A,B,C} 0.039s|V7,kit-ontology
+T2|x|apply schema.tql + functions ke db openorca — DONE 2026-08-22, live: db `openorca`, blast(A) siklus A-B-C-A → {A,B,C} 0.028s; agent-action direfaktor jadi abstract relation (B5), query per-kind terstruktur terverifikasi|V7,kit-ontology
 T3|.|lib client TypeDB HTTP (signin, retry AUT3, one-shot query, deteksi 206)|V2,V3,I.api
 T4|.|tools ontology_query + ontology_write|V2,V7,V9,I.tools
 T5|.|ArgoCD machine account openorca + RBAC + lib client REST|V8,I.api
@@ -94,5 +94,7 @@ B1|2026-08-21|OO-001 verification asumsi `argocd-application-controller` = Deplo
 B2|2026-08-22|compose Postgres bind host `5432` bentrok native Postgres (brew) di mesin dev|host port → 5433, container tetap 5432
 B3|2026-08-22|(a) compose TypeDB bind host `8000` bentrok proses lokal lain; (b) `wait_for` pakai `curl -sf` (cek 2xx apa saja) → false-pass saat layanan lain balas 200 di `/health`|host port → 8729; health-check diperketat cek status 204 persis (TypeDB asli), ⊥ sekadar 2xx
 B4|2026-08-22|`kubectl apply` client-side gagal krn CRD `applicationsets.argoproj.io` > limit annotation 262144 byte|`kubectl apply --server-side --force-conflicts` (ArgoCD + Rollouts, keduanya CRD besar)
+B5|2026-08-22|desain awal `agent-action` = entity + `action-kind` enum string; target aksi cuma di `evidence` JSON mentah, ⊥ query-able terstruktur|refactor → `agent-action @abstract relation` + 7 subtype (pola type-theoretic relations, TypeDB Academy 11.2); terverifikasi live
+B6|2026-08-22|insert relation pakai `$a (role: $x) isa T` → error WCP4 (TypeDB v3 wajib keyword `links` eksplisit)|`$a isa T, links (role: $x), has ...;` — terverifikasi live, semua contoh kit diperbaiki
 B5|2026-08-22|healthcheck TypeDB di compose pakai `CMD-SHELL` → dieksekusi via `/bin/sh` (dash) yang ⊥ dukung `/dev/tcp`; komentar salah klaim bash → healthcheck selalu gagal `Directory nonexistent`, `--wait` hang|test diganti `["CMD", "bash", "-c", ...]` eksplisit; ditemukan saat hardening CIS (cap_drop/read-only) memicu re-verify penuh
 ```
