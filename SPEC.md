@@ -9,6 +9,9 @@ Vulnerability operations open-source: loop Detect→Validate→Remediate→Resol
 - Stack pinned: `deepagents` v1.13 (TS/Node) | TypeDB v3 via HTTP v1 | ArgoCD v3 + Argo Rollouts | Kubernetes.
 - Runtime TS/Node. ⊥ Python.
 - Multi-model, multi-provider: OpenAI, Anthropic, AWS Bedrock, Ollama, DeepSeek, Alibaba Tongyi, OpenRouter, LM Studio, HuggingFace. Registry tunggal `packages/agents/src/models/`, ⊥ hardcode provider di tools/pipeline. Detail: `context/kits/kit-models.md`.
+- Checkpointer = `@langchain/langgraph-checkpoint-postgres` (self-hosted Postgres). Riset 2026-08-21: satu-satunya opsi yang tahan restart+multi-proses (V1) & direkomendasikan resmi LangGraph.js utk produksi; MemorySaver/SqliteSaver ⊥ cukup di luar single-instance dev.
+- Dev cluster = `kind`. Riset 2026-08-21: satu-satunya yang lolos 2 filter keras — multi-cluster murah (topologi ApplicationSet §kit-fleet) & jalan di GitHub Actions ubuntu runner tanpa install tambahan; Rancher/Docker Desktop k8s gagal di multi-cluster, minikube 3-4x lebih berat per cluster.
+- Sandbox hunter = self-hosted Docker+gVisor (default), Firecracker/microsandbox = upgrade path. Detail: `context/kits/kit-sandboxes.md`.
 - TypeDB HTTP: cap 10k answers/query, token JWT volatile (mati saat restart), tx id process-local.
 - Audit primer di TypeDB, ⊥ andalkan `status.history` ArgoCD (cap 10, selective sync tak tercatat).
 - Sovereignty: ∀ context store (graph TypeDB, checkpointer, memory, factory audit) self-hosted; ⊥ SaaS eksternal utk context. Model provider = pilihan org (bisa self-hosted via string `"provider:model"`).
@@ -53,6 +56,8 @@ V14: dedup deterministik via source→sink path (entry-point+sink); ⊥ semantic
 V15: finding ber-verdict false-positive | state dismissed → run berikutnya suppress sebelum route; ⊥ re-surface dismissed
 V16: coverage ⊥ diklaim dari 1 run | 1 model; butuh repeated runs + cross-model comparison (agentic = probabilistik)
 V17: ∀ provider model → didaftar via `resolveModel` registry (kit-models); ⊥ instansiasi `Chat*` provider langsung di tools/pipeline/subagent
+V18: ∀ hunter subagent (execute repo pihak ketiga) → sandbox ter-isolasi via `resolveSandbox` registry (kit-sandboxes); ⊥ LocalShellBackend / execute host tanpa isolasi
+V19: checkpointer produksi = Postgres (self-hosted); MemorySaver/SqliteSaver ⊥ dipakai di luar single-instance dev
 ```
 
 ## §T
@@ -78,6 +83,7 @@ T16|.|Cross-model harness: repeated runs + model comparison; lacak coverage/vali
 T17|.|Shared engineer review surface: inspect evidence, add context, validasi severity, assign owner, approve remediasi|V1,V12,kit-workflow
 T18|.|Scaffold monorepo (apps/api, apps/web, packages/{shared,ontology,argocd,agents}) per plan-project-structure|V9,plan-project-structure
 T19|.|Model registry: resolveModel utk 9 provider (openai, anthropic, bedrock, ollama, deepseek, alibaba-tongyi, openrouter, lmstudio, huggingface)|V16,V17,kit-models
+T20|.|Sandbox registry: DockerGvisorSandbox (default, hardened) + resolveSandbox; prototipe Firecracker/microsandbox|V13,V18,kit-sandboxes
 ```
 
 ## §B

@@ -39,8 +39,10 @@ openorca/
 │   ├── argocd/                   # klien ArgoCD/Rollouts REST
 │   │   └── src/{client.ts, actions.ts}
 │   └── agents/                   # wiring deepagents: tools, subagents, HITL, checkpointer
-│       └── src/{tools/, subagents/, models/, orchestrator.ts, checkpointer.ts}
-│           # models/registry.ts — resolveModel(provider, modelId); SATU tempat instansiasi Chat* (V17)
+│       └── src/{tools/, subagents/, models/, sandboxes/, orchestrator.ts, checkpointer.ts}
+│           # models/registry.ts    — resolveModel(provider, modelId); SATU tempat instansiasi Chat* (V17)
+│           # sandboxes/registry.ts — resolveSandbox(key); default DockerGvisorSandbox utk hunter (V18)
+│           # checkpointer.ts       — PostgresSaver (V19), pool dari packages/shared config
 ├── context/ · factory/ · docker-compose.yml · versions.env    # (sudah ada)
 └── pnpm-workspace.yaml
 ```
@@ -142,8 +144,9 @@ Query di `packages/ontology/queries.ts` (verbatim dari kit-workflow): dedup by (
 
 ## Persistensi & sovereignty (§C)
 
-- Checkpointer LangGraph (Postgres|SQLite self-hosted) → interrupt HITL persist, frontend bisa resume.
+- Checkpointer LangGraph = **Postgres** self-hosted (`@langchain/langgraph-checkpoint-postgres`, V19; riset 2026-08-21 — satu-satunya yang tahan restart+multi-proses, direkomendasikan resmi LangGraph.js produksi). `docker-compose.yml` service `postgres` utk dev. Interrupt HITL persist di sini → frontend bisa resume kapan saja.
 - Semua state (graph, checkpointer, memory) self-hosted; ⊥ SaaS eksternal (§C sovereignty).
+- Encryption-at-rest ⊥ built-in di paket JS checkpointer manapun (beda dgn Python `EncryptedSerializer`) — kalau checkpoint state bawa data sensitif, enkripsi di layer deployment Postgres (disk/volume encryption, TLS in-transit, `pgcrypto`), bukan di library.
 
 ## Mapping ke SPEC
 
@@ -152,6 +155,8 @@ dir/flow                     | tasks | invariants
 packages/ontology            | T3    | V2,V3
 packages/agents tools ont.   | T4    | V2,V7,V9
 packages/agents/models       | T19   | V16,V17
+packages/agents/sandboxes    | T20   | V13,V18
+apps/api/checkpointer.ts     | —     | V1,V19
 packages/argocd + tools      | T5,T6 | V4,V5,V8
 apps/api/webhook             | T7    | —
 Foundation stage             | T13   | V11

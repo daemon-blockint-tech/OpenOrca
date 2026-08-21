@@ -1,4 +1,4 @@
-# OpenOrca dev data plane — TypeDB v3 (context graph / ontology).
+# OpenOrca dev data plane — TypeDB v3 (context graph) + Postgres (LangGraph checkpointer, V19).
 # Cluster-side infra (kind + ArgoCD + Rollouts) is installed by OO-001 scripts, NOT here.
 # Run: docker compose --env-file versions.env up -d
 name: openorca-dev
@@ -18,7 +18,22 @@ services:
     # volumes:
     #   - typedb-data:/opt/typedb-server-linux-arm64/server/data
 
+  postgres:
+    image: postgres:${POSTGRES_VERSION:-18.4-alpine}
+    container_name: openorca-checkpointer
+    ports:
+      - "127.0.0.1:5432:5432"
+    environment:
+      POSTGRES_USER: openorca
+      POSTGRES_PASSWORD: openorca-dev   # dev only — never used outside localhost; prod uses a secret manager
+      POSTGRES_DB: openorca_checkpoints
+    restart: unless-stopped
+    # Persistence OFF by default (dev = ephemeral; matches TypeDB above). Uncomment to persist:
+    # volumes:
+    #   - postgres-data:/var/lib/postgresql/18/docker   # PG18+ path is version-scoped
+
 # volumes:
 #   typedb-data:
+#   postgres-data:
 #
-# Default dev credentials: admin / password. TLS off (localhost only).
+# Default dev credentials: TypeDB admin/password, Postgres openorca/openorca-dev. TLS off (localhost only).

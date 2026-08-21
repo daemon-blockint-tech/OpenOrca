@@ -5,7 +5,8 @@ agent: claude
 risk: low
 grill: pending
 verification:
-  - "docker compose up -d && curl -sf http://localhost:8000/health"
+  - "docker compose --env-file versions.env up -d && curl -sf http://localhost:8000/health"
+  - "pg_isready -h localhost -p 5432 -U openorca"
   - "kind get clusters | grep openorca"
   - "kubectl -n argocd get deploy argocd-server argocd-repo-server argocd-application-controller"
   - "kubectl -n argo-rollouts get deploy argo-rollouts"
@@ -13,15 +14,16 @@ verification:
 
 # Context
 
-SPEC §T1. Fondasi lokal utk semua task lain. TypeDB v3 via docker (port 1729 gRPC, 8000 HTTP, kredensial default `admin/password`); cluster kind `openorca`; ArgoCD v3 + Argo Rollouts install manifest resmi. Referensi: `context/refs/research/typedb_drivers.md` (port/auth), `argocd_architecture.md`.
+SPEC §T1. Fondasi lokal utk semua task lain. TypeDB v3 via docker (port 1729 gRPC, 8000 HTTP, kredensial default `admin/password`); Postgres via docker (port 5432, checkpointer LangGraph — V19); cluster `kind` (V-riset 2026-08-21, lihat Grill Gate); ArgoCD v3 + Argo Rollouts install manifest resmi. Referensi: `context/refs/research/typedb_drivers.md` (port/auth), `argocd_architecture.md`.
 
 # Acceptance Criteria
 
-1. `scripts/dev-up.sh` idempotent: compose TypeDB + kind create + install ArgoCD + Rollouts; jalan ulang tanpa error.
+1. `scripts/dev-up.sh` idempotent: compose TypeDB+Postgres + kind create + install ArgoCD + Rollouts; jalan ulang tanpa error.
 2. `curl http://localhost:8000/health` → 204.
 3. `POST /v1/signin` dgn `admin/password` → token.
-4. ArgoCD API server reachable via port-forward; `argocd version` sukses.
-5. `scripts/dev-down.sh` bersih total.
+4. `pg_isready` sukses; `psql` bisa connect dgn kredensial `versions.env`/compose.
+5. ArgoCD API server reachable via port-forward; `argocd version` sukses.
+6. `scripts/dev-down.sh` bersih total.
 
 # Constraints
 
@@ -35,5 +37,11 @@ Cek idempotensi (jalankan dev-up 2x) & pin versi.
 
 # Grill Gate
 
-- [ ] Cluster target dev: kind cukup, atau harus k3d/minikube/cluster existing? (pemilik: user)
-- [ ] TypeDB: ganti password default admin di dev, atau biarkan? (pemilik: user)
+- [x] Cluster target dev: **kind**. Resolved via riset 2026-08-21 (workflow terpisah, sumber bertanggal):
+      satu-satunya kandidat yang lolos 2 filter keras — (a) 2+ cluster murah utk uji ApplicationSet
+      `clusters` generator (kind/k3d ~0.5GB idle/cluster vs minikube 1.5-2GB/cluster via VM driver), (b)
+      pre-installed di GitHub Actions ubuntu runner (kind & minikube ya, k3d ⊥) → dev & CI pakai tool
+      identik. kind menang atas k3d krn: dokumentasi ArgoCD sendiri default ke `kind create cluster`, dan
+      kind = subproject resmi kubernetes-sigs (dipakai project Kubernetes sendiri utk conformance test).
+      Rancher Desktop & Docker Desktop k8s gagal keras (1 cluster per instance, GUI-only ⊥ CI headless).
+- [ ] TypeDB: ganti password default admin di dev, atau biarkan? (pemilik: user — preferensi, ⊥ riset-able)
