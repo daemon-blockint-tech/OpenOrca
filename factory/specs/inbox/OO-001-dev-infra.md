@@ -3,7 +3,7 @@ id: OO-001
 title: Dev infra — TypeDB + kind + ArgoCD + Rollouts bootstrap
 agent: claude
 risk: low
-grill: pending
+grill: completed
 verification:
   - "docker compose --env-file versions.env up -d && curl -sf http://localhost:8000/health"
   - "pg_isready -h localhost -p 5432 -U openorca"
@@ -44,4 +44,6 @@ Cek idempotensi (jalankan dev-up 2x) & pin versi.
       identik. kind menang atas k3d krn: dokumentasi ArgoCD sendiri default ke `kind create cluster`, dan
       kind = subproject resmi kubernetes-sigs (dipakai project Kubernetes sendiri utk conformance test).
       Rancher Desktop & Docker Desktop k8s gagal keras (1 cluster per instance, GUI-only ⊥ CI headless).
-- [ ] TypeDB: ganti password default admin di dev, atau biarkan? (pemilik: user — preferensi, ⊥ riset-able)
+- [x] TypeDB: **biarkan default** (`admin/password`). Keputusan user 2026-08-21 — dev-only, terikat
+      localhost (`docker-compose.yml`), di belakang Docker; ganti password nambah friksi tanpa nilai
+      keamanan nyata di lingkungan dev ini. Re-evaluasi kalau TypeDB pernah di-expose di luar localhost.

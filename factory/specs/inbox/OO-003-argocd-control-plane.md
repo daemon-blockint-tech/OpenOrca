@@ -3,7 +3,7 @@ id: OO-003
 title: ArgoCD control plane — machine account + client + tools argocd_*/rollout_* (HITL)
 agent: claude
 risk: high
-grill: pending
+grill: completed
 verification:
   - "npm test -- argocd"
   - "node scripts/smoke-recall.mjs"
@@ -34,6 +34,14 @@ Risk high: tool ini menyentuh cluster. Review wajib cek: HITL tidak bisa di-bypa
 
 # Grill Gate
 
-- [ ] Nama/URL fleet repo git nyata? (placeholder `git.example.com` di kit-fleet) (pemilik: user)
-- [ ] Re-enable autosync pasca-rollback: otomatis setelah approval, atau selalu manual? (pemilik: user)
-- [ ] Demo app utk smoke: bikin repo demo baru, atau pakai app existing? (pemilik: user)
+- [x] Fleet repo: **https://github.com/daemon-blockint-tech/openorca-fleet** (dibuat 2026-08-21, README
+      seed sudah push). `kit-fleet.md` placeholder `git.example.com` sudah diganti URL nyata di semua
+      occurrence (AppProject `sourceRepos`, ApplicationSet `repoURL` ×2). Manifest aktual (envs/prod/*)
+      diisi task T10.
+- [x] Re-enable autosync pasca-rollback: **selalu manual**. Keputusan user 2026-08-21 — sejalan V1
+      human-in-the-lead; engineer eksplisit nyalakan lagi setelah yakin rollback stabil, ⊥ ada window
+      auto-rollforward tak terduga. Implikasi: `argocd_rollback` tool (kit-agent-tools.md) ⊥ pernah
+      auto-re-enable `spec.syncPolicy.automated.enabled` — itu aksi terpisah, HITL lagi kalau lewat agent.
+- [x] Demo app: **repo baru** — https://github.com/daemon-blockint-tech/openorca-demo-app (dibuat
+      2026-08-21, README seed sudah push). Isolated, aman di-rusak sengaja utk uji recall/rollforward
+      (SPEC T12), ⊥ ganggu app nyata. Konten (health endpoint + Rollout canary manifest) diisi T10/T12.

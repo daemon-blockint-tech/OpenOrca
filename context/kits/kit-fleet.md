@@ -25,7 +25,7 @@ metadata:
   namespace: argocd
 spec:
   description: OpenOrca-managed fleet
-  sourceRepos: ["https://git.example.com/org/fleet-repo.git"]   # ganti (grill)
+  sourceRepos: ["https://github.com/daemon-blockint-tech/openorca-fleet.git"]
   destinations:
     - server: "*"
       namespace: "svc-*"
@@ -52,7 +52,7 @@ spec:
               selector:
                 matchLabels: { openorca.io/fleet: "true" }
           - git:
-              repoURL: https://git.example.com/org/fleet-repo.git
+              repoURL: https://github.com/daemon-blockint-tech/openorca-fleet.git
               revision: main
               directories: [{ path: "envs/prod/*" }]
   template:
@@ -67,7 +67,7 @@ spec:
     spec:
       project: openorca
       source:
-        repoURL: https://git.example.com/org/fleet-repo.git
+        repoURL: https://github.com/daemon-blockint-tech/openorca-fleet.git
         targetRevision: main
         path: "{{.path.path}}"
       destination:

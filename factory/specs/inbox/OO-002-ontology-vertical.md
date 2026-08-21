@@ -3,7 +3,7 @@ id: OO-002
 title: Ontology vertical — schema + client TypeDB HTTP + tools ontology_*
 agent: claude
 risk: medium
-grill: pending
+grill: completed
 verification:
   - "npm test -- ontology"
   - "node scripts/apply-schema.mjs && node scripts/smoke-ontology.mjs"
@@ -33,5 +33,8 @@ Uji V2 dgn seed >10k attribute. Uji V3 dgn restart container TypeDB di tengah te
 
 # Grill Gate
 
-- [ ] Konvensi id (`SVC-*`, `F-*`) final, atau ikut id sistem eksternal (mis. nama repo GitHub)? (pemilik: user)
-- [ ] Schema tambahan utk secrets/compliance sekarang, atau tunda? (pemilik: user)
+- [x] Konvensi id: **custom prefix** (`SVC-*`, `F-*`, `A-*`, `CVE-*` — sudah dipakai `kit-ontology.md`).
+      Keputusan user 2026-08-21 — stabil, ⊥ tergantung API eksternal, gampang dibaca manusia. ⊥ perlu
+      perubahan; `kit-ontology.md` §Catatan sudah konsisten dgn ini.
+- [x] Schema secrets/compliance: **tunda**. Keputusan user 2026-08-21 — YAGNI, belum ada requirement
+      konkret; TypeQL `define` gampang di-extend nanti (attribute/owns tambahan), ⊥ perlu migrasi berat.
