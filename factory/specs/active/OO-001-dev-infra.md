@@ -19,12 +19,12 @@ SPEC §T1. Fondasi lokal utk semua task lain. TypeDB v3 via docker (host port 17
 
 # Acceptance Criteria
 
-1. `scripts/dev-up.sh` idempotent: compose TypeDB+Postgres + kind create + install ArgoCD + Rollouts; jalan ulang tanpa error.
-2. `curl http://localhost:8729/health` → **204 persis** (bukan cuma 2xx — lihat SPEC §B B3).
-3. `POST /v1/signin` dgn `admin/password` → token.
-4. `pg_isready` sukses; `psql` bisa connect dgn kredensial `versions.env`/compose.
-5. ArgoCD API server reachable via port-forward; `argocd version` sukses.
-6. `scripts/dev-down.sh` bersih total.
+1. `scripts/dev-up.sh` idempotent: compose TypeDB+Postgres + kind create + install ArgoCD + Rollouts; jalan ulang tanpa error. **✓ terverifikasi live 2026-08-22 — run ke-2: data plane Running→Healthy no-op, kind "already exists, skipping", ArgoCD+Rollouts reconcile bersih, exit 0.**
+2. `curl http://localhost:8729/health` → **204 persis** (bukan cuma 2xx — lihat SPEC §B B3). **✓ terverifikasi live.**
+3. `POST /v1/signin` dgn `admin/password` → token. **✓ terverifikasi live — JWT diterima.**
+4. `pg_isready` sukses; `psql` bisa connect dgn kredensial `versions.env`/compose. **✓ terverifikasi live.**
+5. ArgoCD API server reachable via port-forward; `argocd version` sukses. **✓ terverifikasi live — port-forward + `argocd login` + `healthz` 200.**
+6. `scripts/dev-down.sh` bersih total. **⏸ pending — destruktif thd state live (kind cluster+ArgoCD+data), tunggu konfirmasi eksplisit user sebelum eksekusi.**
 
 # Constraints
 

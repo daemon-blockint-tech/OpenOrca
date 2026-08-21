@@ -5,7 +5,7 @@ name: openorca-dev
 
 services:
   typedb:
-    image: typedb/typedb:${TYPEDB_VERSION:-3.12.3}
+    image: ${TYPEDB_IMAGE}
     container_name: openorca-typedb
     ports:
       - "127.0.0.1:1729:1729"   # gRPC (drivers)
@@ -48,7 +48,7 @@ services:
     #   - typedb-data:/opt/typedb-server-linux-arm64/server/data
 
   postgres:
-    image: postgres:${POSTGRES_VERSION:-18.4-alpine}
+    image: ${POSTGRES_IMAGE}
     container_name: openorca-checkpointer
     # Jalankan sebagai user postgres (uid/gid 70 di alpine) — entrypoint resmi mendukung
     # non-root (skip jalur chown), sekaligus menutup temuan bench 4.1 "running as root".
