@@ -90,4 +90,5 @@ T20|.|Sandbox registry: DockerGvisorSandbox (default, hardened) + resolveSandbox
 
 ```
 id|date|cause|fix
+B1|2026-08-21|OO-001 verification asumsi `argocd-application-controller` = Deployment; manifest resmi v3.5.1 = StatefulSet|-
 ```

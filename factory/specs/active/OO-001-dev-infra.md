@@ -8,7 +8,8 @@ verification:
   - "docker compose --env-file versions.env up -d && curl -sf http://localhost:8000/health"
   - "pg_isready -h localhost -p 5432 -U openorca"
   - "kind get clusters | grep openorca"
-  - "kubectl -n argocd get deploy argocd-server argocd-repo-server argocd-application-controller"
+  - "kubectl -n argocd get deploy argocd-server argocd-repo-server"
+  - "kubectl -n argocd get statefulset argocd-application-controller"
   - "kubectl -n argo-rollouts get deploy argo-rollouts"
 ---
 
