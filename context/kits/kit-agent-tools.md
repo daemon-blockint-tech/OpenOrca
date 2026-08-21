@@ -60,9 +60,11 @@ rollout_promote   | destruk | !    | !        | action=promote-full
 
 ## Wiring deepagents
 
+Model diambil dari registry multi-provider (`context/kits/kit-models.md`), ⊥ hardcode string di sini (V17).
+
 ```ts
 const agent = createDeepAgent({
-  model: "anthropic:claude-sonnet-4-6",           // ganti bebas — model agnostic
+  model: resolveModel("anthropic", "claude-sonnet-4-6"),   // ganti provider = ganti argumen, lihat kit-models
   tools: [ontologyQuery, ontologyWrite, argocdAppStatus, fleetList,
           argocdSync, argocdRollback, rolloutRecall, rolloutPromote],
   interruptOn: {                                   // V1 — human in the lead

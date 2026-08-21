@@ -8,7 +8,7 @@ Vulnerability operations open-source: loop Detect→Validate→Remediate→Resol
 
 - Stack pinned: `deepagents` v1.13 (TS/Node) | TypeDB v3 via HTTP v1 | ArgoCD v3 + Argo Rollouts | Kubernetes.
 - Runtime TS/Node. ⊥ Python.
-- Model agnostic gratis dari deepagents (`"provider:model"` string + harness profiles). ⊥ bikin abstraksi model sendiri.
+- Multi-model, multi-provider: OpenAI, Anthropic, AWS Bedrock, Ollama, DeepSeek, Alibaba Tongyi, OpenRouter, LM Studio, HuggingFace. Registry tunggal `packages/agents/src/models/`, ⊥ hardcode provider di tools/pipeline. Detail: `context/kits/kit-models.md`.
 - TypeDB HTTP: cap 10k answers/query, token JWT volatile (mati saat restart), tx id process-local.
 - Audit primer di TypeDB, ⊥ andalkan `status.history` ArgoCD (cap 10, selective sync tak tercatat).
 - Sovereignty: ∀ context store (graph TypeDB, checkpointer, memory, factory audit) self-hosted; ⊥ SaaS eksternal utk context. Model provider = pilihan org (bisa self-hosted via string `"provider:model"`).
@@ -52,6 +52,7 @@ V13: ∀ Hunt agent = tools + permissions ter-scope per spesialisasi (least priv
 V14: dedup deterministik via source→sink path (entry-point+sink); ⊥ semantic-similarity-only. Path sama → collapse; beda → distinct
 V15: finding ber-verdict false-positive | state dismissed → run berikutnya suppress sebelum route; ⊥ re-surface dismissed
 V16: coverage ⊥ diklaim dari 1 run | 1 model; butuh repeated runs + cross-model comparison (agentic = probabilistik)
+V17: ∀ provider model → didaftar via `resolveModel` registry (kit-models); ⊥ instansiasi `Chat*` provider langsung di tools/pipeline/subagent
 ```
 
 ## §T
@@ -76,6 +77,7 @@ T15|.|Correlate+report: collapse kelemahan terkait → unified finding (exploit-
 T16|.|Cross-model harness: repeated runs + model comparison; lacak coverage/validation-rate/cost/runtime/refusal/dup-rate|V16,kit-workflow
 T17|.|Shared engineer review surface: inspect evidence, add context, validasi severity, assign owner, approve remediasi|V1,V12,kit-workflow
 T18|.|Scaffold monorepo (apps/api, apps/web, packages/{shared,ontology,argocd,agents}) per plan-project-structure|V9,plan-project-structure
+T19|.|Model registry: resolveModel utk 9 provider (openai, anthropic, bedrock, ollama, deepseek, alibaba-tongyi, openrouter, lmstudio, huggingface)|V16,V17,kit-models
 ```
 
 ## §B

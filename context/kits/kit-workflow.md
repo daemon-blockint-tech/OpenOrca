@@ -94,7 +94,7 @@ Model = satu bagian sistem; ⊥ ada model/run tunggal yang beri coverage lengkap
 - Run berulang model sama pun bervariasi (agentic = probabilistik). 1 analisis sukses ⊥ bukti coverage lengkap.
 - ∴ orchestrator dukung: eksekusi berulang, validasi independen, **cross-model comparison** → surface finding tambahan + ungkap di mana tiap konfigurasi kuat/lemah.
 
-Implementasi: model per-subagent (`"provider:model"` string, gratis dari deepagents §C), set model dikonfigurasi, N run, union+dedup finding. Orkestrasi run berulang bisa lewat loop-factory (repeat + compare).
+Implementasi: model per-subagent via `resolveModel` registry (9 provider — `context/kits/kit-models.md`), set model dikonfigurasi, N run lintas provider, union+dedup finding. Orkestrasi run berulang bisa lewat loop-factory (repeat + compare).
 
 ## Mapping ke primitif deepagents (terverifikasi ke source)
 
@@ -115,7 +115,7 @@ Hunt paralel (remote) | AsyncSubAgent async_subagents.ts:26 {name, description, 
 combination agent     | subagent baca findings via ontology_query (graph), ⊥ scan ulang
 nested pipeline       | CompiledSubAgent subagents.ts:91 {name, description, runnable, mode?} — bungkus createDeepAgent penuh
 isolated exec PoC/fix | BaseSandbox / LocalShellBackend, permissions ter-scope
-model diversity       | model per-subagent (string|instance) + harness profiles; repeat via loop-factory
+model diversity       | resolveModel registry (kit-models, 9 provider) per-subagent + harness profiles; repeat via loop-factory
 ```
 Contoh copyable: `examples/async-subagents/parallel-research/supervisor.ts` (deklarasi + prompt fan-out paralel), `examples/hierarchical/hierarchical-agent.ts` (CompiledSubAgent nested).
 

@@ -39,7 +39,8 @@ openorca/
 │   ├── argocd/                   # klien ArgoCD/Rollouts REST
 │   │   └── src/{client.ts, actions.ts}
 │   └── agents/                   # wiring deepagents: tools, subagents, HITL, checkpointer
-│       └── src/{tools/, subagents/, orchestrator.ts, checkpointer.ts}
+│       └── src/{tools/, subagents/, models/, orchestrator.ts, checkpointer.ts}
+│           # models/registry.ts — resolveModel(provider, modelId); SATU tempat instansiasi Chat* (V17)
 ├── context/ · factory/ · docker-compose.yml · versions.env    # (sudah ada)
 └── pnpm-workspace.yaml
 ```
@@ -150,6 +151,7 @@ Query di `packages/ontology/queries.ts` (verbatim dari kit-workflow): dedup by (
 dir/flow                     | tasks | invariants
 packages/ontology            | T3    | V2,V3
 packages/agents tools ont.   | T4    | V2,V7,V9
+packages/agents/models       | T19   | V16,V17
 packages/argocd + tools      | T5,T6 | V4,V5,V8
 apps/api/webhook             | T7    | —
 Foundation stage             | T13   | V11

@@ -19,7 +19,7 @@ context/
 │   ├── research/        # riset source-level fondasi stack (10 laporan)
 │   ├── principles.md    # 5 insight yang membentuk desain
 │   └── adoption.md      # 9-step sequence membangun pipeline
-├── kits/                # kit-ontology · kit-agent-tools · kit-fleet · kit-workflow
+├── kits/                # kit-ontology · kit-agent-tools · kit-fleet · kit-workflow · kit-models
 ├── plans/               # project-structure (foldering + pseudocode) + plan per wave
 └── impl/STATUS.md       # tracking implementasi
 factory/
