@@ -1,0 +1,74 @@
+## Layout
+
+- Repo root is a Cargo + Bazel dual build; root `Cargo.toml` builds `typedb_server_bin` from `main.rs`. Top-level dirs are internal crates: `storage/` (RocksDB MVCC storage + WAL), `durability/` (WAL), `encoding/` (key/vertex encodings, IIDs), `concept/` (type/thing managers), `answer/` (`VariableValue`, `Thing`, `Type`), `ir/`+`compiler/` (query IR, annotation, `PipelineStructure`), `executor/` (pipeline execution, `ConceptDocument`, batches), `query/` (`QueryManager`, parse/plan caches, `given_rows`), `function/`, `database/` (`Database`, `DatabaseManager`, `TransactionRead/Write/Schema`), `user/` (`UserManager`, `PermissionManager`), `system/` (system-db concepts `User`/`Credential`, `schema.tql`), `diagnostics/`, `resource/` (constants), `config/`, `docs/blueprints/` (architecture notes: `executor.md`, `planner.md`, `read.md`, `write.md`, `schema.md`, `type_system.md`).
+- `server/` — the crate that owns everything network-facing:
+  - `server/lib.rs` — `ServerBuilder`/`Server`, spawns all listeners.
+  - `server/service/grpc/` — gRPC service (`typedb_service.rs`, `transaction_service.rs`, `authenticator.rs`, encoders `row.rs`/`document.rs`/`concept.rs`, `options.rs`, `response_builders.rs`, migration import/export).
+  - `server/service/http/` — HTTP API (`typedb_service.rs` routes, `transaction_service.rs`, `authenticator.rs`, JSON codecs under `message/`).
+  - `server/service/admin/` — local-only admin gRPC over Unix socket/named pipe, with its **own vendored proto** `server/service/admin/proto/admin_service.proto`.
+  - `server/authentication/` — token/credential machinery (`token_manager.rs`, `credential_verifier.rs`, `mod.rs`).
+  - `server/state/` — `ServerState` operators: `database_operator.rs`, `transaction_operator.rs`, `user_operator.rs`, `server_operator.rs`.
+  - `server/config.yml` — shipped default config.
+- `admin/` — standalone `typedb-admin` CLI binary (`admin/main.rs`) that connects to the admin socket.
+- `binary/` — launcher scripts (`typedb`, `typedb.bat`, `typedb.service`).
+
+## Core flow
+
+- Boot: `main.rs` parses `server/parameters/cli.rs` `CLIArgs` (flags like `--server.listen-address`, `--server.http.enabled`, `--server.http.listen-address`), merges over `server/config.yml` via `ConfigBuilder`, then `ServerBuilder::build()` → `Server::serve()` (`server/lib.rs`).
+- `Server::serve_all` (`server/lib.rs`) starts up to three listeners concurrently:
+  - **gRPC** (`serve_grpc`): tonic server on `server.listen-address` (default `0.0.0.0:1729`), wrapped in `grpc::authenticator::Authenticator` tower layer, serving `typedb_protocol::type_db_server::TypeDbServer`. `GRPC_MAX_MESSAGE_SIZE = 1GB`, HTTP/2 keepalive.
+  - **HTTP** (`serve_http`): axum on `server.http.listen-address` (default `0.0.0.0:8000`, enabled by default), protected router behind `http::authenticator::Authenticator` layer merged with an unprotected router, `CorsLayer::permissive()`, body limit 1GB.
+  - **Admin** (`serve_admin`): tonic over Unix socket (`admin.sock`, mode owner-RW) / Windows named pipe, service `TypeDbAdminServer`; **no auth** — filesystem access is the trust boundary; runs as `DEFAULT_USER_NAME` accessor.
+- **Wire protocol is referenced, not vendored**: `MODULE.bazel` declares `bazel_dep(name = "typedb_protocol")` → `https://github.com/typedb/typedb-protocol`, pinned `version 3.12.0`; `Cargo.lock` pins `typedb-protocol` as `git+https://github.com/typedb/typedb-protocol?tag=3.12.0` (prost/tonic-generated). Only the admin proto lives in-repo.
+- gRPC transaction loop: `GRPCTypeDBService::transaction` (`server/service/grpc/typedb_service.rs`) is a **bidirectional stream**; each connection spawns a `TransactionService` (`server/service/grpc/transaction_service.rs`) whose `listen()` runs a `tokio::select!` loop over the client request stream, a close channel, global shutdown, and the transaction timeout. `handle_request` dispatches on `typedb_protocol::transaction::req::Req`: `OpenReq` (must be first), `QueryReq`, `AnalyzeReq`, `StreamReq`, `CommitReq`, `RollbackReq`, `CloseReq`.
+- Query execution model (gRPC): `handle_query` parses via `QueryManager::parse`; schema queries execute eagerly (interrupting readers, flushing queued writers) in `handle_query_schema`; write pipelines run one-at-a-time on `spawn_blocking` (`running_write_query`); reads stream through `QueryStreamTransmitter` — sends `prefetch_size` answers (default `DEFAULT_PREFETCH_SIZE = 32`), then a `StreamSignal::Continue`, then keeps streaming for `network_latency_millis` (client-reported in `OpenReq`); the client must send `StreamReq` to resume, else `Done`/error signals end the stream. Concurrent queries queue in `query_queue`.
+- Commit path: `commit_write_transaction` / `commit_schema_transaction` (`server/service/transaction_service.rs`) call `transaction.finalise()` → `ServerState.databases().data_commit()/schema_commit()`. `handle_commit` returns `Break` — a commit (like close) **terminates the transaction stream**. Rollback keeps the transaction open. Read transactions can neither commit nor rollback (`TransactionServiceError::CannotCommitReadTransaction`).
+- HTTP transaction loop: `server/service/http/transaction_service.rs` mirrors the gRPC service but is driven by an mpsc channel of `TransactionRequest { Query, AnalyseQuery, Commit, Rollback, Close }` + oneshot `TransactionResponder`. `HTTPTypeDBService` (`server/service/http/typedb_service.rs`) keeps open transactions in `Arc<RwLock<HashMap<Uuid, TransactionInfo>>>`, ties each to its `owner` (username), and a 5-minute interval task reaps closed ones. HTTP answers are collected (bounded by `DEFAULT_ANSWER_COUNT_LIMIT_HTTP = 10_000`), not streamed; exceeding the limit returns `206 Partial Content` with a warning (`QueryAnswerWarning`).
+
+## Public API
+
+**gRPC (`typedb_protocol.TypeDB` service, impl in `server/service/grpc/typedb_service.rs`)**
+- Auth-free (per `AuthenticatedService::AUTHENTICATION_FREE_METHODS` in `server/service/grpc/authenticator.rs`): `connection_open`, `authentication_token_create`. Everything else requires `authorization: Bearer <token>` metadata, validated in `server/authentication/mod.rs::authenticate`, which injects `Accessor(username)` into request extensions.
+- `connection_open(connection::open::Req)` — checks `Version`/`ExtensionVersion` compatibility (rejects mismatched drivers with `ProtocolError::IncompatibleProtocolVersion`, message includes `driver_lang`/`driver_version`), requires embedded `authentication` (username+password `Credentials::Password`), returns connection id + server list + **token** in one round trip.
+- `authentication_token_create` — password → fresh JWT.
+- Databases: `databases_get/all/contains/create`, `database_schema` (TypeQL text), `database_type_schema`, `database_delete`, `database_export` (server-stream), `databases_import` (bidi stream).
+- Users: `users_get/all/contains/create/update/delete` — gated by `user/permission_manager.rs::PermissionManager`: only `admin` (`DEFAULT_USER_NAME`) may list/create; any user may get/update/delete **itself**.
+- Servers: `servers_all`, `servers_get`, `server_version`.
+- `transaction` — bidi stream; lifecycle: `OpenReq{database, type: Read|Write|Schema, options, network_latency_millis}` → `QueryReq{query, options, given}`… (+ `StreamReq` continuations) → `CommitReq` | `RollbackReq` | `CloseReq`.
+- Row answers: `typedb_protocol::ConceptRow { row: Vec<RowEntry>, involved_blocks }` with `RowEntry.entry` one of `Empty | Concept | Value | ConceptList | ValueList` (`server/service/grpc/row.rs`); concepts/values encoded in `server/service/grpc/concept.rs` (entity/relation/attribute with IID, types, typed values incl. decimal/date/datetime-tz/duration/struct). Fetch answers: `typedb_protocol::ConceptDocument` tree of `List|Map|Leaf` (`server/service/grpc/document.rs`). Query header declares `ConceptRowStream` (with column names) vs `ConceptDocumentStream` vs `Done` (`response_builders.rs`).
+
+**HTTP API v1 (routes in `server/service/http/typedb_service.rs`; only version literal `"v1"` — `server/service/http/message/version.rs`)**
+- Unprotected: `GET /health` (204), `GET /:version/version`, `POST /:version/signin` with `{"username","password"}` → `{"token"}` (`message/authentication.rs`).
+- Protected (Bearer token): `GET /:v/servers`; `GET /:v/databases`; `GET|POST|DELETE /:v/databases/:name`; `GET /:v/databases/:name/schema` and `/type-schema` (plain text TypeQL); `GET /:v/users`; `GET|POST|PUT|DELETE /:v/users/:username` (`POST {"password"}`, `PUT {"password"}`).
+- Transactions: `POST /:v/transactions/open` with `{"databaseName","transactionType":"read"|"write"|"schema","transactionOptions":{...}}` → `{"transactionId": uuid}`; then `POST /:v/transactions/:id/query` (`{"query","queryOptions","givenRows"}`), `/analyze`, `/commit`, `/rollback`, `/close`. Only the owning user can touch a transaction (owner check in every handler).
+- One-shot: `POST /:v/query` — open payload flattened + `query` + optional `commit` (defaults to auto-commit for write/schema, `QUERY_ENDPOINT_COMMIT_DEFAULT = true`; reads always just close).
+- Response shape (`message/query/mod.rs`): `QueryAnswerResponse { queryType: "read"|"write"|"schema", answerType: "ok"|"conceptRows"|"conceptDocuments", answers: [...], query: <analyzed structure>, warning }`. Rows are `{ data: {var: concept}, involvedBlocks }` (`message/query/row.rs`); concepts are tagged JSON (`{"kind":"entity","iid":...}`, `{"kind":"attribute","iid","value","valueType",...}` — `message/query/concept.rs`); fetch documents are plain nested JSON (`message/query/document.rs`).
+- Query options (`QueryOptionsPayload`): `includeInstanceTypes`, `answerCountLimit`, `includeQueryStructure` (HTTP default true for Studio). Transaction options: `schemaLockAcquireTimeoutMillis`, `transactionTimeoutMillis` (default 5 min, `DEFAULT_TRANSACTION_TIMEOUT_MILLIS`).
+
+**Auth internals**
+- `server/authentication/token_manager.rs::TokenManager` — HS512 JWTs (`jsonwebtoken`), claims `{sub, exp, iat}`; secret is **random per server boot** (restart invalidates all tokens); tokens also tracked server-side in `token_owners` map, so a token must both decode and be present; `invalidate_user` revokes on user change. Expiration from config `server.authentication.token-expiration-seconds` (shipped config 5000s; code default `DEFAULT_AUTHENTICATION_TOKEN_EXPIRATION` = 4h; bounds 1s..1y).
+- Default credentials: `admin`/`password` (`resource/constants.rs::server::{DEFAULT_USER_NAME, DEFAULT_USER_PASSWORD}`), created at first boot into the internal `_system` database by `server/system_init.rs`.
+
+**Drivers**
+- This repo names **no driver languages**. `README.md` says only "TypeDB comes with a mature ecosystem including language drivers" and links docs/Studio; the driver contract is the external protocol repo `github.com/typedb/typedb-protocol` (pinned tag `3.12.0` in `MODULE.bazel`/`Cargo.lock`). `connection_open` treats `driver_lang`/`driver_version` as free-form strings, so any language implementing the proto can connect. There is **no Node.js/TypeScript code in this repo**; the practical JS/TS path evidenced here is the HTTP v1 API (it is what TypeDB Studio uses — the server prints a `studio.typedb.com/connect?...` link and keeps `DEFAULT_INCLUDE_STRUCTURE_HTTP = true` "for studio backwards compatibility"). A native Node driver would live in the external `typedb-driver` repo, which this repo does not reference.
+
+## Extension points
+
+- `server/state/mod.rs` operators are traits (`TransactionOperator` in `server/state/transaction_operator.rs`, plus database/user/server operators) with `Local*` impls — the seam where the closed-source cluster edition plugs in; `ServerBuilder::server_state()` / `admin_serve_override()` (`server/lib.rs`) let an embedding binary substitute state and admin transport.
+- `query/given_rows.rs::GivenRows` trait — protocol-agnostic decoding of client-supplied input rows; implemented per transport (`GivenRowsGrpc` in `server/service/grpc/transaction_service.rs`, `GivenRowsHttp` in `server/service/http/message/query/mod.rs`). Lets a query pipeline start from caller-provided concepts/values (IIDs as `0x1e…`/`0x1f…`/`0x20…` hex strings, or typed literals).
+- HTTP protocol versioning: `ProtocolVersion` enum + path param — new versions are added as enum variants.
+- `server::admin_proto` re-export + `AdminServeFuture` allow alternative admin transports.
+- Error surface is centralized in `typedb_error!` macros with stable prefixes/codes (`AUT1..4` in `server/authentication/mod.rs`, `TSV1..23` in `server/service/transaction_service.rs`) — comments warn codes are depended on by drivers; treat them as API.
+
+## Notes for integrators
+
+- Two ports, one server: gRPC `:1729` (drivers/Console) and HTTP `:8000` (Studio/REST), both auth against the same token service; monitoring on `:4104` (`diagnostics.monitoring`), local admin socket optional (`server.admin.enabled`, default off).
+- Lifecycle to follow (HTTP): `POST /v1/signin` → Bearer token → `POST /v1/transactions/open` (db must already exist via `POST /v1/databases/:name`) → `POST /v1/transactions/:id/query` (repeat) → `POST /v1/transactions/:id/commit`. Or single-shot `POST /v1/query`. Lifecycle (gRPC): `connection_open` → open bidi `transaction` stream → `OpenReq` → `QueryReq`/`StreamReq` → `CommitReq` (stream ends on commit/close/error).
+- Transaction types are strict: schema queries need `schema` transactions, writes need `write` or `schema` (`TransactionServiceError` codes 8/9). Schema transactions take a global schema lock (`schemaLockAcquireTimeoutMillis`, default 10s).
+- Transactions are single-threaded per stream: one running write query at a time; new queries queue behind it. Interleaved reads are interrupted by writes/schema/commit — expect `QueryInterrupted` errors on outstanding streams after you commit.
+- Tokens die on server restart and on user password change (`TokenManager::invalidate_user` via `user_operator`); clients must be prepared to re-signin on `AUT3 InvalidToken` — official drivers rely on those stable `AUT*` codes.
+- HTTP is not for huge result sets: hard default cap 10k answers, `206` + `warning` on truncation; gRPC streams unbounded (answer limit default `None`, `DEFAULT_ANSWER_COUNT_LIMIT_GRPC`).
+- TLS off by default (`server.encryption.enabled: false`); credentials go plaintext on both protocols until enabled (rustls; same cert config feeds tonic and axum — `server/service/grpc/encryption.rs`, `server/service/http/encryption.rs`).
+- The HTTP `Uuid` transaction id is process-local (map in `HTTPTypeDBService`), not durable — a server restart drops it; there is no session concept in v3, only transactions.
+- CORS is `permissive()` — browser apps can hit the HTTP API directly.
+- Database export/import (migration) is gRPC-only (`server/service/grpc/migration/`); schema retrieval as TypeQL text exists on both protocols.

@@ -1,0 +1,20 @@
+# deps
+node_modules/
+# build
+dist/
+build/
+*.tsbuildinfo
+# env / secrets
+.env
+.env.*
+!.env.example
+# runtime
+*.log
+.DS_Store
+# loop-factory generated artifacts (audit trail, not source)
+factory/prompts/*
+factory/runs/*
+factory/reviews/*
+!factory/prompts/.gitkeep
+!factory/runs/.gitkeep
+!factory/reviews/.gitkeep

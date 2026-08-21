@@ -1,0 +1,43 @@
+name: guard
+on:
+  push:
+    branches: [experimental, staging, main]
+  pull_request:
+    branches: [main, staging]
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Spec contract present
+        run: |
+          set -e
+          for f in SPEC.md FORMAT.md ARCHITECTURE.md README.md \
+                   context/kits/kit-ontology.md context/kits/kit-agent-tools.md \
+                   context/kits/kit-fleet.md context/kits/kit-workflow.md; do
+            test -f "$f" || { echo "::error::missing required file $f"; exit 1; }
+          done
+
+      - name: SPEC has required sections
+        run: |
+          set -e
+          for s in '## §G' '## §C' '## §I' '## §V' '## §T' '## §B'; do
+            grep -qF "$s" SPEC.md || { echo "::error::SPEC.md missing section $s"; exit 1; }
+          done
+
+      - name: Inbox specs well-formed
+        run: |
+          set -e
+          shopt -s nullglob
+          for spec in factory/specs/inbox/*.md; do
+            grep -qE '^id:' "$spec" || { echo "::error::$spec missing frontmatter id"; exit 1; }
+            grep -qiE 'Acceptance Criteria' "$spec" || { echo "::error::$spec missing Acceptance Criteria"; exit 1; }
+          done
+          echo "guard ok"
+
+      - name: docker-compose valid
+        run: docker compose --env-file versions.env config -q

@@ -1,0 +1,10 @@
+.git
+node_modules
+dist
+build
+context/refs/research
+factory
+*.log
+.DS_Store
+.env
+.env.*
