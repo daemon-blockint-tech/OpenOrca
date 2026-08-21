@@ -1,6 +1,6 @@
 # OpenOrca dev data plane — TypeDB v3 (context graph) + Postgres (LangGraph checkpointer, V19).
 # Cluster-side infra (kind + ArgoCD + Rollouts) is installed by OO-001 scripts, NOT here.
-# Run: docker compose --env-file versions.env up -d
+# Run: docker compose --env-file versions.env up -d --wait
 name: openorca-dev
 
 services:
@@ -9,8 +9,37 @@ services:
     container_name: openorca-typedb
     ports:
       - "127.0.0.1:1729:1729"   # gRPC (drivers)
-      - "127.0.0.1:8000:8000"   # HTTP v1 (agent tools — see context/kits/kit-agent-tools.md)
+      # Host port NOT 8000 — that's a very common local-dev-tool default (collided with an
+      # unrelated local service on this machine); container-internal port stays 8000 (default).
+      - "127.0.0.1:${TYPEDB_HTTP_PORT:-8729}:8000"   # HTTP v1 (agent tools — kit-agent-tools.md)
     restart: unless-stopped
+    # CIS hardening (docker-bench 2026-08-21): 5.26 no-new-privileges, 5.29 pids-limit,
+    # 5.12 cpu limit, 5.3 cap-drop ALL, 5.13 read-only rootfs (+tmpfs untuk dir tulisan).
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+      # Data dir bersifat arch-specific (lihat komentar volumes di bawah) — keduanya di-mount
+      # sebagai tmpfs supaya compose portabel lintas arch; yang tak terpakai sekadar idle.
+      - /opt/typedb-server-linux-arm64/server/data:rw,noexec,nosuid,size=256m
+      - /opt/typedb-server-linux-x86_64/server/data:rw,noexec,nosuid,size=256m
+      # Logger TypeDB membuat dir logs relatif terhadap server home — panic kalau read-only.
+      - /opt/typedb-server-linux-arm64/server/logs:rw,noexec,nosuid,size=64m
+      - /opt/typedb-server-linux-x86_64/server/logs:rw,noexec,nosuid,size=64m
+    deploy:
+      resources:
+        limits: { memory: 1g, cpus: "1.0", pids: 256 }   # dev sizing — demo/test dataset, bukan skala produksi
+    healthcheck:
+      # No curl/wget/nc in the image (Ubuntu 22.04 base) — bash's /dev/tcp does a dependency-free
+      # raw HTTP request. TypeDB's /health returns exactly "204 No Content" (verified live); grep
+      # for that specific code, not just "any response", for the same reason as SPEC §B B3.
+      # Panggil bash eksplisit: CMD-SHELL memakai /bin/sh (dash) yang ⊥ dukung /dev/tcp.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8000 && printf 'GET /health HTTP/1.0\r\n\r\n' >&3 && head -1 <&3 | grep -q 204"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
     # Persistence OFF by default (dev = ephemeral; dev-down = full reset).
     # To persist across restarts, mount the arch-specific data dir + uncomment the volume:
     #   arm64 (Apple Silicon): /opt/typedb-server-linux-arm64/server/data
@@ -21,13 +50,35 @@ services:
   postgres:
     image: postgres:${POSTGRES_VERSION:-18.4-alpine}
     container_name: openorca-checkpointer
+    # Jalankan sebagai user postgres (uid/gid 70 di alpine) — entrypoint resmi mendukung
+    # non-root (skip jalur chown), sekaligus menutup temuan bench 4.1 "running as root".
+    user: "70:70"
     ports:
-      - "127.0.0.1:5432:5432"
+      # Host port NOT 5432 — commonly taken by a native/Homebrew Postgres install;
+      # container-internal port stays 5432 (default).
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
     environment:
       POSTGRES_USER: openorca
       POSTGRES_PASSWORD: openorca-dev   # dev only — never used outside localhost; prod uses a secret manager
       POSTGRES_DB: openorca_checkpoints
     restart: unless-stopped
+    # CIS hardening (docker-bench 2026-08-21): 5.26, 5.29, 5.12, 5.3, 5.13 — pola sama dgn typedb.
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+      - /var/run/postgresql:rw,noexec,nosuid,size=16m,uid=70,gid=70
+      - /var/lib/postgresql:rw,nosuid,size=256m,uid=70,gid=70   # data dir — ephemeral by design (dev)
+    deploy:
+      resources:
+        limits: { memory: 512m, cpus: "0.5", pids: 128 }   # dev sizing — checkpoint store demo, bukan load produksi
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U openorca -d openorca_checkpoints"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
     # Persistence OFF by default (dev = ephemeral; matches TypeDB above). Uncomment to persist:
     # volumes:
     #   - postgres-data:/var/lib/postgresql/18/docker   # PG18+ path is version-scoped
@@ -37,3 +88,8 @@ services:
 #   postgres-data:
 #
 # Default dev credentials: TypeDB admin/password, Postgres openorca/openorca-dev. TLS off (localhost only).
+#
+# Both services define real HEALTHCHECKs (not just "container started") — `docker compose up -d --wait`
+# blocks until both report healthy, which is what scripts/dev-up.sh relies on instead of hand-rolled
+# polling (removed the exact bug class that produced SPEC §B B3: a naive host-side check that couldn't
+# tell "the right server answered" from "something answered").

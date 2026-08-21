@@ -45,7 +45,7 @@ V3: TypeDB error AUT3 → re-signin 1x → retry; gagal lagi → surface, ⊥ lo
 V4: recall app ber-Rollout → RunResourceActionV2 action=abort; ⊥ patch Rollout langsung; ⊥ Rollback RPC
 V5: rollback app non-Rollout → urutan: autosync off → rollback {id} → re-enable; (RPC menolak FailedPrecondition kalau autosync on)
 V6: Rollout phase=Degraded & status.abort=true → state recall expected; ⊥ buka incident baru
-V7: ∀ finding|verdict|aksi agent → row di graph (entity agent-action / finding); audit trail lengkap di TypeDB
+V7: ∀ finding|verdict|aksi agent → row di graph (relation `<kind>-action` sub `agent-action` / finding); audit trail lengkap di TypeDB
 V8: ∀ akses ArgoCD → API server + token machine account (RBAC+audit); ⊥ direct CR write via kubeconfig
 V9: nama tool custom ∉ BUILTIN_TOOL_NAMES deepagents (ls, read_file, write_file, edit_file, delete, glob, grep, execute, task, *_async_task)
 V10: ∀ service ter-manage → tepat 1 Application, di-generate ApplicationSet openorca-fleet; ⊥ Application manual
@@ -65,7 +65,7 @@ V19: checkpointer produksi = Postgres (self-hosted); MemorySaver/SqliteSaver ⊥
 ```
 id|status|task|cites
 T1|.|dev infra: TypeDB 3.x (docker) + kind + ArgoCD + Rollouts, script bootstrap|I.env
-T2|.|apply schema.tql + functions ke db openorca|V7,kit-ontology
+T2|x|apply schema.tql + functions ke db openorca — DONE 2026-08-22, live: db `openorca`, blast(A) siklus A-B-C-A → {A,B,C} 0.039s|V7,kit-ontology
 T3|.|lib client TypeDB HTTP (signin, retry AUT3, one-shot query, deteksi 206)|V2,V3,I.api
 T4|.|tools ontology_query + ontology_write|V2,V7,V9,I.tools
 T5|.|ArgoCD machine account openorca + RBAC + lib client REST|V8,I.api
@@ -91,4 +91,8 @@ T20|.|Sandbox registry: DockerGvisorSandbox (default, hardened) + resolveSandbox
 ```
 id|date|cause|fix
 B1|2026-08-21|OO-001 verification asumsi `argocd-application-controller` = Deployment; manifest resmi v3.5.1 = StatefulSet|-
+B2|2026-08-22|compose Postgres bind host `5432` bentrok native Postgres (brew) di mesin dev|host port → 5433, container tetap 5432
+B3|2026-08-22|(a) compose TypeDB bind host `8000` bentrok proses lokal lain; (b) `wait_for` pakai `curl -sf` (cek 2xx apa saja) → false-pass saat layanan lain balas 200 di `/health`|host port → 8729; health-check diperketat cek status 204 persis (TypeDB asli), ⊥ sekadar 2xx
+B4|2026-08-22|`kubectl apply` client-side gagal krn CRD `applicationsets.argoproj.io` > limit annotation 262144 byte|`kubectl apply --server-side --force-conflicts` (ArgoCD + Rollouts, keduanya CRD besar)
+B5|2026-08-22|healthcheck TypeDB di compose pakai `CMD-SHELL` → dieksekusi via `/bin/sh` (dash) yang ⊥ dukung `/dev/tcp`; komentar salah klaim bash → healthcheck selalu gagal `Directory nonexistent`, `--wait` hang|test diganti `["CMD", "bash", "-c", ...]` eksplisit; ditemukan saat hardening CIS (cap_drop/read-only) memicu re-verify penuh
 ```

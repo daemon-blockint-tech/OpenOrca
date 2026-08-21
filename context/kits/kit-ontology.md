@@ -22,7 +22,9 @@ define
   attribute exploitability value string @values("confirmed", "likely", "unlikely", "not-exploitable", "unknown");
   attribute finding-state value string @values("open", "triaged", "awaiting-approval", "remediating", "resolved", "dismissed");
   attribute verdict value string @values("true-positive", "false-positive", "wont-fix");
-  attribute action-kind value string @values("sync", "rollback", "recall", "promote", "patch", "scan", "judge");
+  attribute application-name value string;
+  attribute rollout-name value string;
+  attribute target-revision value string;
   attribute cwe-id value string;
   attribute entry-point value string;
   attribute sink value string;
@@ -38,10 +40,12 @@ define
 
   entity service
     owns id @key, owns name, owns repo-url,
+    owns application-name @card(0..1), owns rollout-name @card(0..1),
     plays ownership:owned,
     plays dependency:dependent, plays dependency:dependee,
     plays deployment-of:subject,
-    plays impact:target;
+    plays impact:target,
+    plays agent-action:subject;
 
   entity package
     owns id @key, owns name, owns version-str,
@@ -62,11 +66,8 @@ define
     owns summary, owns evidence, owns remediation @card(0..1), owns occurred-at,
     plays manifestation:instance, plays impact:source,
     plays resolution:problem, plays approval:subject,
-    plays correlation:canonical, plays correlation:duplicate;
-
-  entity agent-action
-    owns id @key, owns action-kind, owns evidence, owns occurred-at,
-    plays resolution:fix, plays approval:subject;
+    plays correlation:canonical, plays correlation:duplicate,
+    plays agent-action:subject;
 
   relation ownership relates owner, relates owned @card(1..);
   relation dependency relates dependent, relates dependee;
@@ -76,6 +77,26 @@ define
   relation resolution relates problem, relates fix;
   relation correlation relates canonical, relates duplicate @card(0..);
   relation approval relates approver, relates subject;
+
+  # Type-theoretic relations (TypeDB Academy 11.2): agent-action = abstract supertype,
+  # tiap subtype = 1 action-kind eks-enum. `subject` (di-inherit ∀ subtype) dimainkan
+  # polimorfik oleh service (sync/rollback/recall/promote/scan) atau finding (patch/judge) —
+  # pola sama dgn approval:subject. Menggantikan agent-action entity + action-kind enum string
+  # (evidence JSON mentah, ⊥ query-able terstruktur — lihat SPEC §B).
+  relation agent-action @abstract,
+    owns id @key, owns evidence, owns occurred-at,
+    relates subject,
+    plays resolution:fix, plays approval:subject;
+
+  relation sync-action sub agent-action,
+    owns target-revision @card(0..1);
+  relation rollback-action sub agent-action,
+    owns target-revision;
+  relation recall-action sub agent-action;
+  relation promote-action sub agent-action;
+  relation patch-action sub agent-action;
+  relation scan-action sub agent-action;
+  relation judge-action sub agent-action;
 ```
 
 ## Functions (reasoning — pengganti rules v2)
@@ -120,10 +141,17 @@ fetch {
 match $f isa finding, has id "F-123";
 update $f has verdict "false-positive", has finding-state "dismissed";
 
-# audit: catat aksi agent (V7)
+# audit: catat aksi agent (V7) — relation, bukan entity; subject = service yang ter-recall
+match $svc isa service, has id "SVC-payments";
 insert
-  $a isa agent-action, has id "A-456", has action-kind "recall",
-    has evidence "{...json argocd response...}", has occurred-at 2026-08-21T00:00:00;
+  $a (subject: $svc) isa recall-action,
+    has id "A-456", has evidence "{...json argocd response...}", has occurred-at 2026-08-21T00:00:00;
+
+# query terstruktur per jenis aksi — inilah yang tak bisa dilakukan pas agent-action masih entity+enum
+match
+  $svc isa service, has id "SVC-payments";
+  $a (subject: $svc) isa recall-action, has occurred-at $t;
+fetch { "recalled_at": $t };
 ```
 
 ## Acceptance criteria
@@ -141,3 +169,5 @@ insert
 - IID TypeDB internal (hex `0x1e…`); identitas lintas-sistem pakai attribute `id` @key (konvensi: `SVC-*, F-*, A-*, CVE-*`).
 - Ubah schema = schema tx → blokir semua write sesaat; jalankan di jendela deploy.
 - `verdict` @card(0..1): finding belum di-triage tidak punya verdict.
+- `agent-action` = abstract relation (⊥ entity — direfaktor 2026-08-22, lihat SPEC §B). Insert HARUS lewat subtype konkret (`sync-action`/`rollback-action`/`recall-action`/`promote-action`/`patch-action`/`scan-action`/`judge-action`), ⊥ bisa langsung `isa agent-action` (abstract type ⊥ instantiable).
+- `subject` (role di `agent-action`, di-inherit ∀ subtype) polimorfik: `service` utk sync/rollback/recall/promote/scan, `finding` utk patch/judge.

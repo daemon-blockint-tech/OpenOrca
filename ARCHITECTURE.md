@@ -22,7 +22,7 @@ flowchart LR
     end
 
     subgraph graphdb[Context graph]
-        TDB[(TypeDB v3<br/>HTTP :8000)]
+        TDB[(TypeDB v3<br/>HTTP :8729 dev host<br/>container default :8000)]
     end
 
     subgraph gitops[GitOps plane]

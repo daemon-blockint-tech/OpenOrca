@@ -5,8 +5,8 @@ agent: claude
 risk: low
 grill: completed
 verification:
-  - "docker compose --env-file versions.env up -d && curl -sf http://localhost:8000/health"
-  - "pg_isready -h localhost -p 5432 -U openorca"
+  - "docker compose --env-file versions.env up -d && curl -s -o /dev/null -w '%{http_code}' http://localhost:8729/health | grep -qx 204"
+  - "pg_isready -h localhost -p 5433 -U openorca"
   - "kind get clusters | grep openorca"
   - "kubectl -n argocd get deploy argocd-server argocd-repo-server"
   - "kubectl -n argocd get statefulset argocd-application-controller"
@@ -15,12 +15,12 @@ verification:
 
 # Context
 
-SPEC §T1. Fondasi lokal utk semua task lain. TypeDB v3 via docker (port 1729 gRPC, 8000 HTTP, kredensial default `admin/password`); Postgres via docker (port 5432, checkpointer LangGraph — V19); cluster `kind` (V-riset 2026-08-21, lihat Grill Gate); ArgoCD v3 + Argo Rollouts install manifest resmi. Referensi: `context/refs/research/typedb_drivers.md` (port/auth), `argocd_architecture.md`.
+SPEC §T1. Fondasi lokal utk semua task lain. TypeDB v3 via docker (host port 1729 gRPC, host port 8729 → container 8000 HTTP — bergeser dari 8000 krn bentrok layanan lokal lain di mesin dev, SPEC §B B3; kredensial default `admin/password`); Postgres via docker (host port 5433 → container 5432, checkpointer LangGraph — V19; host port bergeser dari 5432 krn bentrok native Postgres di mesin dev — SPEC §B B2); cluster `kind` (V-riset 2026-08-21, lihat Grill Gate); ArgoCD v3 + Argo Rollouts install manifest resmi. Referensi: `context/refs/research/typedb_drivers.md` (port/auth), `argocd_architecture.md`.
 
 # Acceptance Criteria
 
 1. `scripts/dev-up.sh` idempotent: compose TypeDB+Postgres + kind create + install ArgoCD + Rollouts; jalan ulang tanpa error.
-2. `curl http://localhost:8000/health` → 204.
+2. `curl http://localhost:8729/health` → **204 persis** (bukan cuma 2xx — lihat SPEC §B B3).
 3. `POST /v1/signin` dgn `admin/password` → token.
 4. `pg_isready` sukses; `psql` bisa connect dgn kredensial `versions.env`/compose.
 5. ArgoCD API server reachable via port-forward; `argocd version` sukses.

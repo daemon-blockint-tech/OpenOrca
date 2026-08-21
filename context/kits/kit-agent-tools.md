@@ -29,7 +29,7 @@ rollout_promote   | destruk | !    | !        | action=promote-full
 ### ontology_write
 - args: `{ query: string }` — insert/update/put/delete.
 - Behavior: one-shot `commit: true` (auto-commit write). Error annotation TypeDB → teruskan verbatim ke agent (query salah = feedback berguna).
-- Audit: tool ini SARANA audit — pemanggil wajib pola `insert $a isa agent-action ...` utk aksi non-graph.
+- Audit: tool ini SARANA audit — pemanggil wajib pola `match $subj ...; insert $a (subject: $subj) isa <kind>-action, has id ..., ...;` (relation, subtype konkret — kit-ontology.md §Catatan) utk aksi non-graph.
 
 ### argocd_app_status
 - args: `{ app: string }`.
