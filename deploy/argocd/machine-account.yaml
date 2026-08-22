@@ -1,0 +1,29 @@
+# Machine account openorca (V8) — apiKey type, ⊥ login capability.
+# Terpisah dari argocd-cm bawaan supaya kubectl patch tidak menimpa field lain.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+data:
+  accounts.openorca: apiKey
+---
+# RBAC machine account — scoped project openorca saja.
+# Termasuk bentuk SUBRESOURCE untuk PatchResource & resource actions (SPEC B11):
+# tanpa baris itu, abort/promote-full/patch managed resource → 403 walau verb polos allow.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-rbac-cm
+  namespace: argocd
+data:
+  policy.csv: |
+    p, openorca, applications, get,      openorca/*, allow
+    p, openorca, applications, sync,     openorca/*, allow
+    p, openorca, applications, action,   openorca/*, allow
+    p, openorca, applications, rollback, openorca/*, allow
+    p, openorca, applications, update,   openorca/*, allow
+    p, openorca, applications, create,   openorca/*, allow
+    p, openorca, projects, get,          openorca,    allow
+    p, openorca, applications, update/argoproj.io/*/*/*, openorca/*, allow
+    p, openorca, applications, action/argoproj.io/*/*,   openorca/*, allow

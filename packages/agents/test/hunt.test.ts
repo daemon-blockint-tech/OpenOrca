@@ -75,14 +75,34 @@ describe("hunt subagents (V13)", () => {
 });
 
 describe("foundationReady (V11 gate)", () => {
-  it("true hanya kalau ada scan-action id berprefix FND-", async () => {
+  // KONTRAK DIPERKUAT (T13): dulu gate cukup melihat PREFIX id `FND-`. Itu fail-open — sebuah
+  // marker tanpa threat model yang bisa dibaca berarti Foundation belum benar-benar "hasilkan
+  // threat model + attack surface" seperti bunyi V11. Sekarang gate menuntut artefak yang
+  // benar-benar ter-parse. Test lama juga memakai bentuk `{id:{value}}` yang bukan bentuk
+  // respons HTTP TypeDB sebenarnya (plain string) — lihat foundation.test.ts utk uji live.
+  it("gate terbuka hanya kalau artefak berisi threat model yang valid", async () => {
+    const valid = JSON.stringify({
+      entry_points: ["POST /pay"],
+      trust_boundaries: [],
+      dependencies: [],
+      auth_paths: [],
+      deploy_context: [],
+      attack_surface: ["amount tanpa validasi"],
+    });
+
     const m1 = mockOntology();
-    (m1.answers as unknown[]).push({ id: { value: "SCAN-abc" } });
-    assert.equal(await foundationReady(m1.client, "checkout"), false);
+    (m1.answers as unknown[]).push({ ev: "{ bukan json" });
+    assert.equal(await foundationReady(m1.client, "checkout"), false, "artefak rusak → tetap tertutup");
 
     const m2 = mockOntology();
-    (m2.answers as unknown[]).push({ id: { value: "FND-checkout" } });
+    (m2.answers as unknown[]).push({ ev: valid });
     assert.equal(await foundationReady(m2.client, "checkout"), true);
+  });
+
+  it("threat model parsial ⊥ membuka gate", async () => {
+    const m = mockOntology();
+    (m.answers as unknown[]).push({ ev: JSON.stringify({ entry_points: ["/a"] }) });
+    assert.equal(await foundationReady(m.client, "checkout"), false);
   });
 
   it("graph error → gate tertutup (false), ⊥ crash", async () => {

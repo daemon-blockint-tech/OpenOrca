@@ -8,30 +8,24 @@ import type { OntologyClient } from "@openorca/ontology";
 import { createOntologyTools } from "../tools/ontology.ts";
 import { resolveModel, type ProviderKey } from "../models/registry.ts";
 import { buildHunterSpecs, HunterFindingsSchema, type HunterFindings } from "./subagents.ts";
-
-const FOUNDATION_ID_PREFIX = "FND-";
+import {
+  ThreatModelSchema,
+  foundationPrompt,
+  persistFoundation,
+  readFoundation,
+  surfaceBriefing,
+} from "./foundation.ts";
 
 function tqlString(s: string): string {
   return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
 /**
- * V11 gate: hunt ⊥ jalan sebelum Foundation menulis threat model + attack surface.
- * Marker minimal = row `scan-action` dengan id berprefix FND- yang links ke service
- * (ditulis oleh runFoundation — T13 akan mengisi konten penuhnya).
+ * V11 gate: hunt ⊥ jalan sebelum Foundation menyimpan threat model yang VALID.
+ * Artefak korup/parsial diperlakukan sbg "belum ada" → gate tetap tertutup (fail-closed).
  */
 export async function foundationReady(ontology: OntologyClient, service: string): Promise<boolean> {
-  const q =
-    `match $svc isa service, has name "${tqlString(service)}";\n` +
-    `$a isa scan-action, links (subject: $svc), has id $id;\n` +
-    `fetch { "id": $id };`;
-  try {
-    const res = await ontology.query(q);
-    const rows = (res.answers as Array<Record<string, unknown>>) ?? [];
-    return rows.some((r) => String((r.id as { value?: string })?.value ?? r.id ?? "").startsWith(FOUNDATION_ID_PREFIX));
-  } catch {
-    return false; // service belum terdaftar / graph error → gate tertutup
-  }
+  return (await readFoundation(ontology, service)) !== null;
 }
 
 export interface HuntDeps {
@@ -105,33 +99,32 @@ export async function runDetect(input: DetectInput, deps: HuntDeps): Promise<Det
 
   let foundationRan = false;
   if (!(await foundationReady(deps.ontology, input.service))) {
-    // Foundation minimal (T13 akan mengganti dengan mapping lengkap): parent agent
-    // memetakan repo → tulis marker FND-* + ringkasan surface via ontology_write.
-    await agent.invoke(
-      {
-        messages: [
-          {
-            role: "user",
-            content:
-              `FOUNDATION stage untuk service "${input.service}". Repo ada di /work.\n` +
-              "Petakan: entry points, trust boundary, dependency utama, konfigurasi auth/deploy.\n" +
-              "Lalu commit hasilnya ke graph PAKAI ontology_write dengan pola persis:\n" +
-              `match $svc isa service, has name "${input.service}";\n` +
-              'insert $a isa scan-action, links (subject: $svc), has id "FND-' +
-              `${input.service}", has evidence "<JSON ringkasan surface>", has occurred-at ${new Date()
-                .toISOString()
-                .slice(0, 19)}.000;\n` +
-              "Selesai setelah write sukses. ⊥ mulai hunting.",
-          },
-        ],
-      },
+    // Foundation dijalankan agent TERPISAH: responseFormat-nya ThreatModel, bukan findings.
+    // Agent memetakan; PIPELINE yang menyimpan (deterministik) — lihat foundation.ts.
+    const foundationAgent = createDeepAgent({
+      model: resolveModel(deps.provider, deps.modelId),
+      tools: [],
+      backend: deps.sandbox,
+      responseFormat: ThreatModelSchema,
+    });
+    const fnd = await foundationAgent.invoke(
+      { messages: [{ role: "user", content: foundationPrompt(input.service) }] },
       config,
     );
+    const parsedModel = ThreatModelSchema.safeParse(fnd.structuredResponse);
+    if (!parsedModel.success) {
+      throw new Error(`foundation mengembalikan threat model tidak valid: ${parsedModel.error.message}`);
+    }
+    await persistFoundation(deps.ontology, input.service, parsedModel.data);
     if (!(await foundationReady(deps.ontology, input.service))) {
-      throw new Error(`foundation gagal menulis marker untuk service "${input.service}" (V11 gate tetap tertutup)`);
+      throw new Error(`foundation gagal tersimpan untuk service "${input.service}" (V11 gate tetap tertutup)`);
     }
     foundationRan = true;
   }
+
+  // Arahan Hunt memakai attack surface hasil Foundation — bukan menyuruh hunter meraba sendiri.
+  const artifact = await readFoundation(deps.ontology, input.service);
+  const briefing = artifact ? surfaceBriefing(artifact) : "(threat model tidak terbaca)";
 
   const result = await agent.invoke(
     {
@@ -139,7 +132,8 @@ export async function runDetect(input: DetectInput, deps: HuntDeps): Promise<Det
         {
           role: "user",
           content:
-            `HUNT stage untuk service "${input.service}". Repo di /work, foundation sudah ada di graph.\n` +
+            `HUNT stage untuk service "${input.service}". Repo di /work.\n` +
+            `Threat model dari Foundation:\n${briefing}\n\n` +
             "Fan-out SEMUA hunter (authz-hunter, untrusted-parse-hunter, outbound-hunter, " +
             "secrets-hunter, deps-hunter) DALAM SATU pesan — paralel (kit-workflow §Hunt).\n" +
             "Setelah semua kembali: panggil combination-analyst untuk exploit chain lintas komponen.\n" +

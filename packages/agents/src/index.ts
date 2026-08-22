@@ -46,3 +46,22 @@ export {
   type Verdict,
 } from "./triage/learn.ts";
 export { unifiedReport, type UnifiedFinding, type Severity } from "./triage/report.ts";
+export {
+  ThreatModelSchema,
+  foundationPrompt,
+  persistFoundation,
+  readFoundation,
+  surfaceBriefing,
+  FOUNDATION_ID_PREFIX,
+  type ThreatModel,
+  type FoundationArtifact,
+} from "./hunt/foundation.ts";
+export {
+  runCrossModelHarness,
+  summarize,
+  type ModelConfig,
+  type RunFn,
+  type RunOutcome,
+  type ModelMetrics,
+  type HarnessReport,
+} from "./harness/crossmodel.ts";
