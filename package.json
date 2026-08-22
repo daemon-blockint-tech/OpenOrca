@@ -1,0 +1,11 @@
+{
+  "name": "openorca",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "test": "pnpm -r test",
+    "apply-schema": "node scripts/apply-schema.mjs",
+    "smoke:ontology": "node scripts/smoke-ontology.mjs"
+  }
+}

@@ -17,10 +17,10 @@ SPEC §T2–T4, invariant V2 V3 V7 V9. Schema + functions verbatim dari `context
 
 Semua acceptance criteria `kit-ontology.md` (1–5) + `kit-agent-tools.md` butir 1–3. Tambahan:
 
-1. `src/ontology/client.ts` — signin lazy, retry AUT3 sekali, deteksi 206/warning → throw pesan reduce/limit.
-2. `scripts/apply-schema.mjs` apply `context/kits/kit-ontology.md` schema (extract blok TypeQL) ke db `openorca`; idempotent (define idempotent-or-error TypeDB).
-3. Test siklus blast: insert A→B→C→A, `blast(A)` = {A,B,C}.
-4. Tools `ontology_query`/`ontology_write` ter-register di `createDeepAgent` tanpa collision.
+1. `packages/ontology/src/client.ts` — signin lazy, retry AUT3 sekali, deteksi 206/warning → throw pesan reduce/limit. **✓ terverifikasi live 2026-08-22 — 5/5 test `packages/ontology`; AUT3 retry-once + no-loop dibuktikan via fetch-mock (bukan baseline).**
+2. `scripts/apply-schema.mjs` apply schema+functions ke db `openorca`; idempotent. **✓ terverifikasi live — 2x rerun exit 0. CATATAN: `define fun` ⊥ idempotent di TypeDB (FUN5), ditangani di script (SPEC §B B8).**
+3. Test siklus blast: insert A→B→C→A, `blast(A)` = {A,B,C}. **✓ `scripts/smoke-ontology.mjs` → {SMOKE-A,B,C} ~3-7ms; juga di test suite.**
+4. Tools `ontology_query`/`ontology_write` ter-register di `createDeepAgent` tanpa collision. **✓ 2/2 test `packages/agents` (V9).**
 
 # Constraints
 

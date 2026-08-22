@@ -66,8 +66,8 @@ V19: checkpointer produksi = Postgres (self-hosted); MemorySaver/SqliteSaver ⊥
 id|status|task|cites
 T1|x|dev infra: TypeDB 3.x (docker) + kind + ArgoCD + Rollouts, script bootstrap — DONE 2026-08-22, 6/6 AC live-terverifikasi (OO-001)|I.env
 T2|x|apply schema.tql + functions ke db openorca — DONE 2026-08-22, live: db `openorca`, blast(A) siklus A-B-C-A → {A,B,C} 0.028s; agent-action direfaktor jadi abstract relation (B5), query per-kind terstruktur terverifikasi|V7,kit-ontology
-T3|.|lib client TypeDB HTTP (signin, retry AUT3, one-shot query, deteksi 206)|V2,V3,I.api
-T4|.|tools ontology_query + ontology_write|V2,V7,V9,I.tools
+T3|x|lib client TypeDB HTTP (signin, retry AUT3, one-shot query, deteksi 206) — DONE 2026-08-22, `packages/ontology` 5/5 test live (OO-002)|V2,V3,I.api
+T4|x|tools ontology_query + ontology_write — DONE 2026-08-22, `packages/agents` 2/2 test, register tanpa collision (OO-002)|V2,V7,V9,I.tools
 T5|.|ArgoCD machine account openorca + RBAC + lib client REST|V8,I.api
 T6|.|tools argocd_* + rollout_* dgn HITL|V1,V4,V5,V9,I.tools
 T7|.|webhook receiver: notifications → spawn agent Detect|I.api,kit-fleet
@@ -81,7 +81,7 @@ T14|.|Challenge+dedup: judge independen (context-isolated) + dedup source→sink
 T15|.|Correlate+report: collapse kelemahan terkait → unified finding (exploit-path, severity, cwe-id, remediation)|V14,kit-workflow,kit-ontology
 T16|.|Cross-model harness: repeated runs + model comparison; lacak coverage/validation-rate/cost/runtime/refusal/dup-rate|V16,kit-workflow
 T17|.|Shared engineer review surface: inspect evidence, add context, validasi severity, assign owner, approve remediasi|V1,V12,kit-workflow
-T18|.|Scaffold monorepo (apps/api, apps/web, packages/{shared,ontology,argocd,agents}) per plan-project-structure|V9,plan-project-structure
+T18|~|Scaffold monorepo per plan-project-structure — pnpm workspace + packages/{ontology,agents} live (OO-002); apps/{api,web} + packages/{shared,argocd} belum|V9,plan-project-structure
 T19|.|Model registry: resolveModel utk 9 provider (openai, anthropic, bedrock, ollama, deepseek, alibaba-tongyi, openrouter, lmstudio, huggingface)|V16,V17,kit-models
 T20|.|Sandbox registry: DockerGvisorSandbox (default, hardened) + resolveSandbox; prototipe Firecracker/microsandbox|V13,V18,kit-sandboxes
 ```
@@ -97,5 +97,6 @@ B4|2026-08-22|`kubectl apply` client-side gagal krn CRD `applicationsets.argopro
 B5|2026-08-22|desain awal `agent-action` = entity + `action-kind` enum string; target aksi cuma di `evidence` JSON mentah, ⊥ query-able terstruktur|refactor → `agent-action @abstract relation` + 7 subtype (pola type-theoretic relations, TypeDB Academy 11.2); terverifikasi live
 B6|2026-08-22|insert relation pakai `$a (role: $x) isa T` → error WCP4 (TypeDB v3 wajib keyword `links` eksplisit)|`$a isa T, links (role: $x), has ...;` — terverifikasi live, semua contoh kit diperbaiki
 B7|2026-08-22|hardening CIS docker-compose.yml (tmpfs `/etc/passwd` bikin file itu kosong; `CMD-SHELL` pakai dash yg ⊥ dukung `/dev/tcp`; digest pin awal ⊥ cocok image teruji)|entry `/etc/passwd` dihapus (redundan dgn `read_only:true`); healthcheck TypeDB pakai `CMD`+`bash -c` eksplisit (diverifikasi dash gagal, bash sukses); `TYPEDB_IMAGE`/`POSTGRES_IMAGE` di-pin ke digest yg SUDAH teruji jalan (bukan hash tak dikenal) — semua terverifikasi live pasca-hardening: container healthy, data survive, koneksi jalan
+B8|2026-08-22|OO-002 asumsi "define idempotent-or-error" ⊥ akurat: TypeDB `define` idempotent utk TYPE (entity/relation/attribute) tapi `define fun` throw FUN5 "already exists" saat rerun|apply-schema.mjs toleransi FUN5/already-exists sbg no-op idempotent; catatan: ⊥ pick up perubahan body fungsi (dev TypeDB ephemeral, schema baru terpasang saat bootstrap fresh berikutnya) — terverifikasi 2x rerun exit 0
 B5|2026-08-22|healthcheck TypeDB di compose pakai `CMD-SHELL` → dieksekusi via `/bin/sh` (dash) yang ⊥ dukung `/dev/tcp`; komentar salah klaim bash → healthcheck selalu gagal `Directory nonexistent`, `--wait` hang|test diganti `["CMD", "bash", "-c", ...]` eksplisit; ditemukan saat hardening CIS (cap_drop/read-only) memicu re-verify penuh
 ```
