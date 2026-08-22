@@ -110,10 +110,21 @@ export function createWebhookHandler(deps: WebhookDeps) {
   };
 }
 
-export function createWebhookServer(deps: WebhookDeps): Server {
+/**
+ * `extraHandler` (opsional) dicoba LEBIH DULU; kalau ia mengembalikan true berarti request
+ * sudah ditangani (dipakai review surface T17 utk /api/*). Dengan begitu webhook dan review
+ * berbagi satu port tanpa saling menimpa header.
+ */
+export function createWebhookServer(
+  deps: WebhookDeps,
+  extraHandler?: (req: IncomingMessage, res: ServerResponse) => Promise<boolean>,
+): Server {
   const handle = createWebhookHandler(deps);
   return createServer((req, res) => {
-    handle(req, res).catch((err) => {
+    (async () => {
+      if (extraHandler && (await extraHandler(req, res))) return;
+      await handle(req, res);
+    })().catch((err) => {
       console.error("[webhook] handler error:", err);
       if (!res.headersSent) res.writeHead(500).end();
     });

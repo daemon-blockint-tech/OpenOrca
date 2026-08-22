@@ -4,6 +4,7 @@ import { ArgoCDClient } from "@openorca/argocd";
 import { OntologyClient } from "@openorca/ontology";
 import { resolveSandbox, runDetect, type ProviderKey } from "@openorca/agents";
 import { createWebhookServer, type OpenOrcaEvent, type RolloutStatusSource } from "./webhook.ts";
+import { createReviewHandler } from "./review.ts";
 
 const required = (name: string): string => {
   const v = process.env[name];
@@ -76,7 +77,22 @@ async function onEvent(event: OpenOrcaEvent): Promise<void> {
   );
 }
 
-const server = createWebhookServer({ secret, argocd: rolloutStatus, onEvent });
+// Review surface (T17) berbagi port dgn webhook. Aktif hanya kalau OPENORCA_REVIEW_SECRET
+// di-set — tanpa itu ⊥ ada permukaan tulis manusia yang terbuka tanpa sengaja.
+const reviewSecret = process.env.OPENORCA_REVIEW_SECRET;
+const reviewHandler = reviewSecret
+  ? createReviewHandler({
+      ontology: new OntologyClient({
+        baseUrl: required("TYPEDB_URL"),
+        username: required("TYPEDB_USER"),
+        password: required("TYPEDB_PASS"),
+        databaseName: process.env.TYPEDB_DB ?? "openorca",
+      }),
+      secret: reviewSecret,
+    })
+  : undefined;
+
+const server = createWebhookServer({ secret, argocd: rolloutStatus, onEvent }, reviewHandler);
 
 const port = Number(process.env.OPENORCA_PORT ?? 8080);
 server.listen(port, () => {
