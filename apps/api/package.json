@@ -9,7 +9,9 @@
     "dev": "node --watch src/main.ts"
   },
   "dependencies": {
+    "@openorca/agents": "workspace:*",
     "@openorca/argocd": "workspace:*",
+    "@openorca/ontology": "workspace:*",
     "zod": "^4.4.3"
   }
 }

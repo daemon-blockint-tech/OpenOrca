@@ -1,6 +1,8 @@
 // Bootstrap @openorca/api — webhook receiver (SPEC §T7) + GET /health.
 // Semua env dari SPEC §I yang wajib di-fail-fast di sini, ⊥ diam-diam jalan setengah-wired.
 import { ArgoCDClient } from "@openorca/argocd";
+import { OntologyClient } from "@openorca/ontology";
+import { resolveSandbox, runDetect, type ProviderKey } from "@openorca/agents";
 import { createWebhookServer, type OpenOrcaEvent, type RolloutStatusSource } from "./webhook.ts";
 
 const required = (name: string): string => {
@@ -34,13 +36,43 @@ const rolloutStatus: RolloutStatusSource = {
 };
 
 /**
- * Spawn point Detect. T8 akan mengganti stub ini dengan orchestrator deepagents
- * (foundation → hunt). Untuk sekarang event dicatat sebagai bukti alur.
+ * Spawn point Detect — T8: webhook → runDetect (foundation gate V11 → hunt paralel
+ * 5 spesialis + combination → persist findings ke graph).
+ *
+ * Hunt hanya aktif kalau env lengkap (OPENORCA_HUNT_ENABLED=true + TYPEDB_* + provider/model);
+ * kalau tidak, event tetap dicatat sbg log — receiver ⊥ mati hanya karena hunt belum dikonfig.
  */
 async function onEvent(event: OpenOrcaEvent): Promise<void> {
-  // TODO(T8): spawn orchestrator — hunt(service, revision)
+  if (process.env.OPENORCA_HUNT_ENABLED !== "true") {
+    console.log(
+      `[detect] app=${event.app} service=${event.service} health=${event.health} phase=${event.phase ?? "-"} revision=${event.revision ?? "-"} (hunt disabled)`,
+    );
+    return;
+  }
+
+  const ontology = new OntologyClient({
+    baseUrl: required("TYPEDB_URL"),
+    username: required("TYPEDB_USER"),
+    password: required("TYPEDB_PASS"),
+    databaseName: process.env.TYPEDB_DB ?? "openorca",
+  });
+  const sandbox = await resolveSandbox("docker-gvisor", {
+    name: `openorca-hunter-${event.service}`,
+    image: process.env.HUNTER_IMAGE ?? "alpine:3.20",
+    // Dev tanpa gVisor terpasang boleh longgar via env — produksi wajib default (true).
+    requireRunsc: process.env.HUNTER_REQUIRE_RUNSC !== "false",
+  });
+  const result = await runDetect(
+    { service: event.service, threadId: `${event.service}:${event.revision ?? "HEAD"}` },
+    {
+      ontology,
+      sandbox,
+      provider: (process.env.HUNT_PROVIDER ?? "anthropic") as ProviderKey,
+      modelId: required("HUNT_MODEL_ID"),
+    },
+  );
   console.log(
-    `[detect] app=${event.app} service=${event.service} health=${event.health} phase=${event.phase ?? "-"} revision=${event.revision ?? "-"}`,
+    `[detect] service=${event.service} selesai: foundationRan=${result.foundationRan} findings=${result.findingIds.length}`,
   );
 }
 

@@ -1,0 +1,44 @@
+# ApplicationSet openorca-fleet — tepat 1 Application per service dir per cluster (V10).
+# Verbatim dari kit-fleet.md §ApplicationSet; template labels = join key ke graph.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: openorca-fleet
+  namespace: argocd
+spec:
+  goTemplate: true
+  generators:
+    - matrix:
+        generators:
+          - clusters:
+              selector:
+                matchLabels: { openorca.io/fleet: "true" }
+          - git:
+              repoURL: https://github.com/daemon-blockint-tech/openorca-fleet.git
+              revision: main
+              directories:
+                - path: "envs/prod/*"
+  template:
+    metadata:
+      name: "{{.path.basename}}-{{.name}}"
+      labels:
+        openorca.io/managed: "true"
+        openorca.io/service: "{{.path.basename}}"
+      annotations:
+        notifications.argoproj.io/subscribe.on-health-degraded.openorca: ""
+        notifications.argoproj.io/subscribe.on-deployed.openorca: ""
+    spec:
+      project: openorca
+      source:
+        repoURL: https://github.com/daemon-blockint-tech/openorca-fleet.git
+        targetRevision: main
+        path: "{{.path.path}}"
+      destination:
+        server: "{{.server}}"
+        namespace: "svc-{{.path.basename}}"
+      syncPolicy:
+        automated: { prune: true, selfHeal: true }
+        syncOptions: [CreateNamespace=true, ServerSideApply=true]
+        retry:
+          limit: 5
+          backoff: { duration: 5s, factor: 2, maxDuration: 3m }

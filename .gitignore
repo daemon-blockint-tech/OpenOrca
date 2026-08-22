@@ -18,3 +18,4 @@ factory/reviews/*
 !factory/prompts/.gitkeep
 !factory/runs/.gitkeep
 !factory/reviews/.gitkeep
+.env.openorca.local

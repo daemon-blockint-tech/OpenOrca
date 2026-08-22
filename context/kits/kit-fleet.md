@@ -95,11 +95,21 @@ data:
 
 ```csv
 # argocd-rbac-cm → policy.csv
+# CATATAN (review OO-003, live-terverifikasi 2026-08-22): PatchResource & RunResourceActionV2
+# mengecek RBAC dgn action BENTUK SUBRESOURCE, bukan verb polos:
+#   PatchResource        → applications, update/<group>/<kind>/<name>
+#   RunResourceActionV2  → applications, action/<group>/<kind>/<action-name>
+# Baris `update`/`action` polos TIDAK match bentuk itu → 403 permission denied
+# (log argocd-server: "user tried to action/argoproj.io/Rollout/promote-full ...").
 p, openorca, applications, get,      openorca/*, allow
 p, openorca, applications, sync,     openorca/*, allow
 p, openorca, applications, action,   openorca/*, allow
 p, openorca, applications, rollback, openorca/*, allow
 p, openorca, applications, update,   openorca/*, allow
+p, openorca, applications, create,   openorca/*, allow
+# subresource forms — wajib untuk rollout_recall/promote (action/v2) & patch managed resource:
+p, openorca, applications, update/argoproj.io/*/*/*, openorca/*, allow
+p, openorca, applications, action/argoproj.io/*/*,   openorca/*, allow
 ```
 
 Token: `POST /api/v1/account/openorca/token` → simpan `ARGOCD_TOKEN`. Verifikasi murah: `GET /api/v1/account/can-i/applications/sync/openorca%2F*`.

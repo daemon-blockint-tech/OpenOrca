@@ -1,0 +1,18 @@
+# AppProject openorca — batas project utk fleet ter-manage (kit-fleet.md §AppProject).
+# Namespace-scoped only; ⊥ cluster resource.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: openorca
+  namespace: argocd
+spec:
+  description: OpenOrca-managed fleet
+  sourceRepos:
+    - https://github.com/daemon-blockint-tech/openorca-fleet.git
+  destinations:
+    - server: "*"
+      namespace: "svc-*"
+  clusterResourceWhitelist: []
+  namespaceResourceBlacklist:
+    - group: ""
+      kind: ResourceQuota

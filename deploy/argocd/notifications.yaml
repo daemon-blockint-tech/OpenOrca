@@ -1,0 +1,39 @@
+# Notifications config — eventing Detect (kit-fleet.md §Notifications → OpenOrca).
+# Dev: webhook URL ke host via host.docker.internal (receiver apps/api di host).
+# Prod: ganti url + secret ref via secret manager.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-notifications-cm
+  namespace: argocd
+data:
+  service.webhook.openorca: |
+    url: http://host.docker.internal:8899/openorca/webhook
+    headers:
+      - name: X-OpenOrca-Secret
+        value: $openorca-webhook-secret
+  trigger.on-health-degraded: |
+    - when: app.status.health.status == 'Degraded'
+      send: [openorca-event]
+  trigger.on-deployed: |
+    - when: app.status.operationState.phase == 'Succeeded' and app.status.health.status == 'Healthy'
+      send: [openorca-event]
+  template.openorca-event: |
+    webhook:
+      openorca:
+        method: POST
+        body: |
+          {"app": "{{.app.metadata.name}}",
+           "service": "{{index .app.metadata.labels "openorca.io/service"}}",
+           "health": "{{.app.status.health.status}}",
+           "phase": "{{.app.status.operationState.phase}}",
+           "revision": "{{.app.status.sync.revision}}"}
+---
+# Nilai secret dev — JANGAN dipakai di luar kind lokal.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: argocd-notifications-secret
+  namespace: argocd
+stringData:
+  openorca-webhook-secret: openorca-dev-webhook-secret

@@ -17,8 +17,10 @@ const APP = "demo-app";
 const DEMO_REPO = "https://github.com/daemon-blockint-tech/openorca-demo-app.git";
 const NS = "svc-demo";
 if (!ARGOCD_URL || !ARGOCD_TOKEN) {
+  // Exit NON-ZERO: a missing token means the drill did not run, which must never be mistaken
+  // for a pass. (It briefly exited 0 here, and a CI/reviewer run read that as success.)
   console.error("smoke-recall: set ARGOCD_URL and ARGOCD_TOKEN (source .env.openorca.local)");
-  process.exit(1);
+  process.exit(2);
 }
 
 async function api(method, path, body) {
@@ -103,6 +105,13 @@ async function main() {
     return n?.health?.status === "Healthy" ? n : null;
   });
   console.log("==> Rollout Healthy at v1 (stable)");
+  // Patch hanya aman SETELAH operasi sync ArgoCD benar2 selesai — patch di tengah
+  // operasi akan ditimpa manifest git sesaat kemudian (ditemukan saat review OO-003).
+  await waitFor("sync operation settled", async () => {
+    const app = await api("GET", `/api/v1/applications/${APP}`);
+    const done = !app.status?.operationState || ["Succeeded", "Failed", "Error"].includes(app.status.operationState.phase);
+    return done && app.status?.sync?.status === "Synced" ? true : null;
+  });
 
   // 3. trigger a v2 canary by bumping the image via a resource action is not built-in; instead patch
   //    the Rollout image through the app's managed resource. Simplest: set image via kubectl-free path —
@@ -116,12 +125,17 @@ async function main() {
   // Bump ke image yang BERBEDA dari current — patch sama = no-op, canary takkan terpicu
   // (ditemukan saat review OO-003: run kedua selalu timeout di "mid-canary").
   const IMAGES = ["nginx:1.27.0-alpine", "nginx:1.27.1-alpine", "nginx:1.26.3-alpine"];
-  const currentImage = (await api(
+  const currentImage = await api(
     "GET",
-    `/api/v1/applications/${APP}/managed-resources?resourceName=${encodeURIComponent(ro.name)}` +
-      `&namespace=${encodeURIComponent(ro.namespace)}`,
-    ).then((r) => JSON.parse(r.items?.[0]?.live?.[0] ?? "{}").spec?.template?.spec?.containers?.[0]?.image)
-    .catch(() => undefined)) ?? "";
+    `/api/v1/applications/${APP}/managed-resources`,
+  )
+    .then((r) => {
+      // items mencakup SEMUA resource app; ambil node Rollout-nya. liveState adalah
+      // JSON STRING, bukan object (ditemukan saat review OO-003).
+      const ro = (r.items ?? []).find((it) => it.kind === "Rollout" && it.namespace === NS);
+      return JSON.parse(ro?.liveState ?? "{}")?.spec?.template?.spec?.containers?.[0]?.image;
+    })
+    .catch(() => undefined);
   const targetImage = IMAGES.find((i) => i !== currentImage) ?? IMAGES[0];
   const mergePatch = JSON.stringify({
     spec: { template: { spec: { containers: [{ name: "demo", image: targetImage }] } } },
@@ -133,6 +147,14 @@ async function main() {
       `&patchType=application/merge-patch%2Bjson`,
     mergePatch, // api() JSON-encodes this string → a bare JSON string body, as the gateway expects
   );
+  // 3a. Matikan autosync dulu (V5 pattern): tanpa ini autosync langsung me-revert
+  //     patch live-image kembali ke versi git sebelum canary sempat parkir.
+  await api(
+    "PATCH",
+    `/api/v1/applications/${APP}`,
+    { name: APP, patchType: "merge", patch: JSON.stringify({ spec: { syncPolicy: { automated: null } } }) },
+  );
+  console.log("==> autosync disabled untuk fase uji");
   console.log(`==> bumped image to ${targetImage} (was: ${currentImage || "?"}) — canary should start and pause at setWeight:50`);
 
   // 4. wait for the canary to be mid-flight (something recall can abort).
@@ -185,6 +207,15 @@ async function main() {
     return n?.health?.status === "Healthy" ? n : null;
   });
   console.log("==> ROLL FORWARD ok: Rollout Healthy after promote-full");
+
+  // 7. CLEANUP: pulihkan autosync (keputusan re-enable selalu eksplisit — di sini script
+  //    smoke yang mengembalikan kondisi awal, bukan agent).
+  await api(
+    "PATCH",
+    `/api/v1/applications/${APP}`,
+    { name: APP, patchType: "merge", patch: JSON.stringify({ spec: { syncPolicy: { automated: {} } } }) },
+  );
+  console.log("==> autosync restored");
   console.log("==> smoke-recall PASSED: recall -> abort -> promote -> Healthy");
 }
 
