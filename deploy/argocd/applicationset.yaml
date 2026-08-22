@@ -38,7 +38,21 @@ spec:
         namespace: "svc-{{.path.basename}}"
       syncPolicy:
         automated: { prune: true, selfHeal: true }
-        syncOptions: [CreateNamespace=true, ServerSideApply=true]
+        # ⊥ ServerSideApply: bikin app OutOfSync permanen (diff bocor managedFields/
+        # defaults manager lain) — terverifikasi live 2026-08-22. CSA cukup utk
+        # manifest service-scale; SSA pertimbangkan lagi kalau ada CRD raksasa.
+        syncOptions: [CreateNamespace=true]
         retry:
           limit: 5
           backoff: { duration: 5s, factor: 2, maxDuration: 3m }
+      # Rollouts controller menulis anotasi revision + status — tanpa ini app mentok OutOfSync
+      # permanen walau workload Healthy (terverifikasi live 2026-08-22).
+      ignoreDifferences:
+        - group: argoproj.io
+          kind: Rollout
+          jsonPointers: ["/status"]
+          jqPathExpressions:
+            - '.metadata.annotations["rollout.argoproj.io/revision"]'
+          # SSA: bandingkan hanya field milik argocd — sisanya (rollouts-controller,
+          # default kube-apiserver spt protocol:TCP) jangan bikin OutOfSync.
+          managedFieldsManagers: [argocd-controller]

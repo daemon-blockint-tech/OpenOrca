@@ -29,7 +29,9 @@ spec:
   destinations:
     - server: "*"
       namespace: "svc-*"
-  clusterResourceWhitelist: []          # namespace-scoped only
+  clusterResourceWhitelist:             # Namespace wajib di-whitelist utk CreateNamespace=true
+    - group: ""                         # (live-terverifikasi T10: [] → sync Failed "not permitted")
+      kind: Namespace
   namespaceResourceBlacklist:
     - group: ""
       kind: ResourceQuota
@@ -75,7 +77,7 @@ spec:
         namespace: "svc-{{.path.basename}}"
       syncPolicy:
         automated: { prune: true, selfHeal: true }
-        syncOptions: [CreateNamespace=true, ServerSideApply=true]
+        syncOptions: [CreateNamespace=true]   # ⊥ ServerSideApply — bikin OutOfSync permanen (SPEC §B B13)
         retry:
           limit: 5
           backoff: { duration: 5s, factor: 2, maxDuration: 3m }
