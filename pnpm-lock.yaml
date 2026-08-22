@@ -16,6 +16,9 @@ importers:
       '@langchain/langgraph':
         specifier: ^1.4.12
         version: 1.4.12(@langchain/core@1.2.9)(zod@4.4.3)
+      '@openorca/argocd':
+        specifier: workspace:*
+        version: link:../argocd
       '@openorca/ontology':
         specifier: workspace:*
         version: link:../ontology
@@ -25,6 +28,15 @@ importers:
       langchain:
         specifier: ^1.5.10
         version: 1.5.10(@langchain/core@1.2.9)
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+
+  packages/argocd:
+    dependencies:
+      undici:
+        specifier: ^7.16.0
+        version: 7.29.0
       zod:
         specifier: ^4.4.3
         version: 4.4.3
@@ -233,6 +245,10 @@ packages:
     resolution: {integrity: sha512-65P7iz6X5yEr1cwcgvQxbbIw7Uk3gOy5dIdtZ4rDveLqhrdJP+Li/Hx6tyK0NEb+2GCyneCMJiGqrADCSNk8sQ==}
     engines: {node: '>=8.0'}
 
+  undici@7.29.0:
+    resolution: {integrity: sha512-IDxfleLmmbSskfWSUATiN1nfn2rDuvnMOqb5CWR92iIfojA0Ud+ulOAAEQ57LPr9rWmsreUyf5lwyao+7GNNVw==}
+    engines: {node: '>=20.18.1'}
+
   yaml@2.9.0:
     resolution: {integrity: sha512-2AvhNX3mb8zd6Zy7INTtSpl1F15HW6Wnqj0srWlkKLcpYl/gMIMJiyuGq2KeI2YFxUPjdlB+3Lc10seMLtL4cA==}
     engines: {node: '>= 14.6'}
@@ -428,6 +444,8 @@ snapshots:
   to-regex-range@5.0.1:
     dependencies:
       is-number: 7.0.0
+
+  undici@7.29.0: {}
 
   yaml@2.9.0: {}
 
