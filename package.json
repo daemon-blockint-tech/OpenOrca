@@ -6,6 +6,7 @@
   "scripts": {
     "test": "pnpm -r test",
     "apply-schema": "node scripts/apply-schema.mjs",
-    "smoke:ontology": "node scripts/smoke-ontology.mjs"
+    "smoke:ontology": "node scripts/smoke-ontology.mjs",
+    "import:exploitdb": "node scripts/import-exploitdb.mjs"
   }
 }

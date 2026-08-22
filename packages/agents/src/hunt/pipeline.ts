@@ -2,8 +2,14 @@
 // Alur: V11 gate (foundation artifact ada di graph) → invoke deepagent (fan-out paralel
 // 5 hunter + combination via task tool, diarahkan systemPrompt supervisor) → findings
 // ditulis ke graph DETERMINISTIK dari sini (bukan lewat LLM) + scan-action audit (V7).
-import { createDeepAgent } from "deepagents";
+import { CompositeBackend, createDeepAgent } from "deepagents";
 import type { BaseSandbox } from "deepagents";
+import {
+  modelRetryMiddleware,
+  toolErrorMiddleware,
+  modelCallLimitMiddleware,
+  toolCallLimitMiddleware,
+} from "langchain";
 import type { OntologyClient } from "@openorca/ontology";
 import { createOntologyTools } from "../tools/ontology.ts";
 import { resolveModel, type ProviderKey } from "../models/registry.ts";
@@ -43,9 +49,25 @@ export function buildHuntAgent(deps: HuntDeps) {
     tools: [ontologyTools.ontologyQuery, ontologyTools.ontologyWrite],
     // Hunter jalan di sandbox — backend eksekusi builtin (execute/ls/read/grep)
     // diturunkan dari BaseSandbox ini, BUKAN LocalShellBackend host (V18).
-    backend: deps.sandbox,
+    // CompositeBackend: permission paths hunter (/work/**) wajib ter-scope ke route
+    // prefix — deepagents throw kalau permissions + exec-backend tanpa scoping
+    // (terverifikasi live di drill 2026-08-22; kit-agent-tools §Wiring sudah bilang).
+    backend: new CompositeBackend(deps.sandbox, { "/work/": deps.sandbox }),
     subagents: buildHunterSpecs(ontologyTools),
     responseFormat: HunterFindingsSchema,
+    middleware: [
+      // Transient (rate limit/timeout/5xx) → retry otomatis.
+      modelRetryMiddleware({ maxRetries: 3, initialDelayMs: 1000, backoffFactor: 2 }),
+      // Tool error recoverable-LLM (query TypeQL salah, dsb) → error text ke model,
+      // ⊥ crash run. Unexpected errors tetap propagate (⊥ swallow).
+      toolErrorMiddleware({
+        onError: (err) =>
+          `tool failed: ${err instanceof Error ? err.name : "Error"}. perbaiki input lalu coba lagi.`,
+      }),
+      // Budget guard — runaway loop ⊥ membakar API budget.
+      modelCallLimitMiddleware({ runLimit: 60 }),
+      toolCallLimitMiddleware({ runLimit: 200 }),
+    ],
   });
 }
 
@@ -104,8 +126,15 @@ export async function runDetect(input: DetectInput, deps: HuntDeps): Promise<Det
     const foundationAgent = createDeepAgent({
       model: resolveModel(deps.provider, deps.modelId),
       tools: [],
-      backend: deps.sandbox,
+      backend: new CompositeBackend(deps.sandbox, { "/work/": deps.sandbox }),
       responseFormat: ThreatModelSchema,
+      middleware: [
+        // Budget guard — foundation tanpa limit terbukti loop eksplorasi tanpa akhir
+        // di model free-tier (drill 2026-08-22: >15 menit). Foundation = 1 pass baca.
+        modelRetryMiddleware({ maxRetries: 3, initialDelayMs: 1000, backoffFactor: 2 }),
+        modelCallLimitMiddleware({ runLimit: 12 }),
+        toolCallLimitMiddleware({ runLimit: 24 }),
+      ],
     });
     const fnd = await foundationAgent.invoke(
       { messages: [{ role: "user", content: foundationPrompt(input.service) }] },
@@ -113,7 +142,12 @@ export async function runDetect(input: DetectInput, deps: HuntDeps): Promise<Det
     );
     const parsedModel = ThreatModelSchema.safeParse(fnd.structuredResponse);
     if (!parsedModel.success) {
-      throw new Error(`foundation mengembalikan threat model tidak valid: ${parsedModel.error.message}`);
+      // Surface pesan terakhir — tanpa ini kegagalan LLM/gateway hanya "undefined" buta.
+      const last = fnd.messages?.at(-1);
+      throw new Error(
+        `foundation mengembalikan threat model tidak valid: ${parsedModel.error.message}` +
+        `\n[last ${last?.tool_calls?.length ? "tool_call " + JSON.stringify(last.tool_calls[0]?.name) : "text"}] ${String(last?.content).slice(0, 300)}`,
+      );
     }
     await persistFoundation(deps.ontology, input.service, parsedModel.data);
     if (!(await foundationReady(deps.ontology, input.service))) {

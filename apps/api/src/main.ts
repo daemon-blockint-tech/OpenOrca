@@ -2,7 +2,7 @@
 // Semua env dari SPEC §I yang wajib di-fail-fast di sini, ⊥ diam-diam jalan setengah-wired.
 import { ArgoCDClient } from "@openorca/argocd";
 import { OntologyClient } from "@openorca/ontology";
-import { resolveSandbox, runDetect, type ProviderKey } from "@openorca/agents";
+import { removeHunterContainer, resolveSandbox, runDetect, type ProviderKey } from "@openorca/agents";
 import { createWebhookServer, type OpenOrcaEvent, type RolloutStatusSource } from "./webhook.ts";
 import { createReviewHandler } from "./review.ts";
 
@@ -57,24 +57,29 @@ async function onEvent(event: OpenOrcaEvent): Promise<void> {
     password: required("TYPEDB_PASS"),
     databaseName: process.env.TYPEDB_DB ?? "openorca",
   });
-  const sandbox = await resolveSandbox("docker-gvisor", {
-    name: `openorca-hunter-${event.service}`,
-    image: process.env.HUNTER_IMAGE ?? "alpine:3.20",
-    // Dev tanpa gVisor terpasang boleh longgar via env — produksi wajib default (true).
-    requireRunsc: process.env.HUNTER_REQUIRE_RUNSC !== "false",
-  });
-  const result = await runDetect(
-    { service: event.service, threadId: `${event.service}:${event.revision ?? "HEAD"}` },
-    {
-      ontology,
-      sandbox,
-      provider: (process.env.HUNT_PROVIDER ?? "anthropic") as ProviderKey,
-      modelId: required("HUNT_MODEL_ID"),
-    },
-  );
-  console.log(
-    `[detect] service=${event.service} selesai: foundationRan=${result.foundationRan} findings=${result.findingIds.length}`,
-  );
+  const containerName = `openorca-hunter-${event.service}`;
+  try {
+    const sandbox = await resolveSandbox("docker-gvisor", {
+      name: containerName,
+      image: process.env.HUNTER_IMAGE ?? "alpine:3.20",
+      // Dev tanpa gVisor terpasang boleh longgar via env — produksi wajib default (true).
+      requireRunsc: process.env.HUNTER_REQUIRE_RUNSC !== "false",
+    });
+    const result = await runDetect(
+      { service: event.service, threadId: `${event.service}:${event.revision ?? "HEAD"}` },
+      {
+        ontology,
+        sandbox,
+        provider: (process.env.HUNT_PROVIDER ?? "anthropic") as ProviderKey,
+        modelId: required("HUNT_MODEL_ID"),
+      },
+    );
+    console.log(
+      `[detect] service=${event.service} selesai: foundationRan=${result.foundationRan} findings=${result.findingIds.length}`,
+    );
+  } finally {
+    await removeHunterContainer(containerName);
+  }
 }
 
 // Review surface (T17) berbagi port dgn webhook. Aktif hanya kalau OPENORCA_REVIEW_SECRET

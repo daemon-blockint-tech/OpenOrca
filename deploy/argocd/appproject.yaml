@@ -12,7 +12,12 @@ spec:
   destinations:
     - server: "*"
       namespace: "svc-*"
-  clusterResourceWhitelist: []
+  # Namespace di-whitelist karena CreateNamespace=true membuatnya sbg bagian sync
+  # (ditemukan live T10: [] memblokir → "resource :Namespace is not permitted").
+  # Selain itu tetap cluster-scoped only.
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
   namespaceResourceBlacklist:
     - group: ""
       kind: ResourceQuota

@@ -36,8 +36,9 @@ export const HunterFindingsSchema = z.object({
 });
 export type HunterFindings = z.infer<typeof HunterFindingsSchema>;
 
+// "read" mencakup ls/read_file/glob/grep (type FilesystemOperation = "read"|"write").
 const READ_ONLY_SOURCE: SubAgent["permissions"] = [
-  { operations: ["read", "ls", "glob", "grep"], paths: ["/work/**"] },
+  { operations: ["read"], paths: ["/work/**"] },
 ];
 
 function hunterPrompt(fokus: string): string {

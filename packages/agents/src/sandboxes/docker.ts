@@ -62,6 +62,11 @@ export async function createHunterContainer(opts: HunterContainerOptions): Promi
   return id.trim();
 }
 
+/** Hancurkan container hunter setelah dipakai (lifecycle: sandbox = biaya sampai dimatikan). */
+export async function removeHunterContainer(nameOrId: string): Promise<void> {
+  await execFileP("docker", ["rm", "-f", nameOrId]).catch(() => {}); // sudah mati = ok
+}
+
 /** Runner injectable untuk test — default execFile("docker"). `input` dikirim ke stdin. */
 export type DockerRunner = (args: string[], input?: string) => Promise<{ stdout: string }>;
 

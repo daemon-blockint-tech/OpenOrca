@@ -8,6 +8,7 @@ export { resolveModel, PROVIDER_KEYS, type ProviderKey } from "./models/registry
 export {
   DockerGvisorSandbox,
   createHunterContainer,
+  removeHunterContainer,
   type DockerRunner,
   type HunterContainerOptions,
 } from "./sandboxes/docker.ts";
