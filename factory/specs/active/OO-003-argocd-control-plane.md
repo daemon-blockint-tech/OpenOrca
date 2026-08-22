@@ -17,11 +17,11 @@ SPEC §T5–T6, invariant V1 V4 V5 V8 V9. Machine account + RBAC verbatim dari `
 
 `kit-agent-tools.md` butir 4–6 + `kit-fleet.md` butir 5. Tambahan:
 
-1. `src/argocd/client.ts` — Bearer token, typed wrapper utk: get app, resource-tree, sync, rollback, patch syncPolicy, resource/actions/v2.
-2. Tool destruktif (`argocd_sync`, `argocd_rollback`, `rollout_recall`, `rollout_promote`) di-flag `interruptOn` & test membuktikan eksekusi tertahan sampai resume (V1).
-3. `argocd_rollback` menolak app ber-Rollout dgn pesan arahan ke `rollout_recall` (V4).
-4. ∀ tool destruktif menulis `agent-action` via `ontology_write` setelah sukses (V7) — depend OO-002.
-5. `smoke-recall.mjs`: app demo + Rollout di kind → recall → assert `status.abort=true` → promote-full → assert Healthy.
+1. `packages/argocd/src/client.ts` — Bearer token, typed wrapper utk: get app, resource-tree, appStatus, sync, rollback, setAutosync, runResourceAction. **✓ 7/7 unit test + terbukti live (appStatus thd ArgoCD nyata via machine token).**
+2. Tool destruktif (`argocd_sync`, `argocd_rollback`, `rollout_recall`, `rollout_promote`) di-flag `interruptOn` (V1). **✓ `INTERRUPT_ON` di-assert memuat TEPAT 4 tool destruktif, ⊥ menyentuh tool read-only.**
+3. `argocd_rollback` menolak app ber-Rollout dgn pesan arahan ke `rollout_recall` (V4). **✓ test menolak + V5 (autosync off SEBELUM rollback, urutan call di-assert, dibiarkan disabled).**
+4. ∀ tool destruktif menulis `agent-action` via `ontology_write` setelah sukses (V7). **✓ test audit sukses + test kegagalan audit ⊥ menutupi aksi fleet yg berhasil (di-surface sbg `auditError`).**
+5. `smoke-recall.mjs`: app demo + Rollout di kind → recall → assert aborted → promote-full → assert Healthy. **✓ LULUS LIVE 2026-08-22: v1 Healthy → canary v2 (Suspended) → abort → Degraded (V6) → retry+promote-full → Healthy, exit 0.**
 
 # Constraints
 
@@ -31,6 +31,16 @@ SPEC §T5–T6, invariant V1 V4 V5 V8 V9. Machine account + RBAC verbatim dari `
 # Review Notes
 
 Risk high: tool ini menyentuh cluster. Review wajib cek: HITL tidak bisa di-bypass, RBAC scoped ke project openorca saja.
+
+**Bukti RBAC (live 2026-08-22):** machine account `openorca` (apiKey) + policy.csv 5 baris scoped `openorca/*`.
+`can-i applications/sync/openorca/*` → **yes**; `can-i applications/sync/default/*` → **no**. Machine account
+sengaja ⊥ punya `applications,create` — pembuatan Application adalah tugas ApplicationSet (kit-fleet), bukan aksi tool.
+Karena itu langkah setup di `smoke-recall.mjs` (create app, bump image) dijalankan dgn token admin (operator-level),
+sedangkan jalur yg dipakai tools tetap token machine ter-scope.
+
+**Bukti HITL:** `INTERRUPT_ON` di-export dari `@openorca/agents` & di-assert berisi tepat 4 tool destruktif.
+Gate sesungguhnya ditegakkan deepagents saat `createDeepAgent({interruptOn})` + checkpointer — test membuktikan
+wiring & isi flag, bukan mem-bypass-nya.
 
 # Grill Gate
 

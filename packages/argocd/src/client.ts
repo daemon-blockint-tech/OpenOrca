@@ -20,6 +20,8 @@ export interface AppStatus {
   hasRollout: boolean;
   /** true when a managed Rollout is currently aborted (status.abort) — V6 expected state. */
   rolloutAborted: boolean;
+  /** true when a managed Rollout is parked on a canary `pause` step (Argo CD reports "Suspended"). */
+  rolloutPaused: boolean;
 }
 
 export class ArgoCDError extends Error {
@@ -108,6 +110,11 @@ export class ArgoCDClient {
     const rolloutAborted = rolloutNodes.some(
       (n) => (n.health?.status ?? "") === "Degraded",
     );
+    // Argo CD reports a canary parked on a `pause` step as "Suspended" (message CanaryPauseStep),
+    // not "Paused" — verified live (SPEC §B B10).
+    const rolloutPaused = rolloutNodes.some(
+      (n) => (n.health?.status ?? "") === "Suspended",
+    );
 
     // automated present (even {}) means autosync on; `enabled:false` explicitly disables it.
     const automated = app.spec?.syncPolicy?.automated;
@@ -122,6 +129,7 @@ export class ArgoCDClient {
       autosyncEnabled,
       hasRollout: rolloutNodes.length > 0,
       rolloutAborted,
+      rolloutPaused,
     };
   }
 
@@ -163,15 +171,22 @@ export class ArgoCDClient {
     action: string,
     resource: { group: string; kind: string; version: string; name: string; namespace: string },
   ): Promise<unknown> {
+    // RunResourceActionV2 is declared `body: "*"` in application.proto — the ENTIRE message goes
+    // in the JSON body, and query params are ignored (unlike the deprecated V1, which bodies only
+    // `action`). Splitting fields across the query string yields a misleading
+    // 500 "required field \"kind\" not set" (SPEC §B B9). `name` here is the Application.
     return this.#req(
       "POST",
-      `/api/v1/applications/${encodeURIComponent(name)}/resource/actions/v2` +
-        `?resourceName=${encodeURIComponent(resource.name)}` +
-        `&namespace=${encodeURIComponent(resource.namespace)}` +
-        `&group=${encodeURIComponent(resource.group)}` +
-        `&kind=${encodeURIComponent(resource.kind)}` +
-        `&version=${encodeURIComponent(resource.version)}`,
-      { action, resourceName: resource.name, namespace: resource.namespace },
+      `/api/v1/applications/${encodeURIComponent(name)}/resource/actions/v2`,
+      {
+        name,
+        namespace: resource.namespace,
+        resourceName: resource.name,
+        version: resource.version,
+        group: resource.group,
+        kind: resource.kind,
+        action,
+      },
     );
   }
 }

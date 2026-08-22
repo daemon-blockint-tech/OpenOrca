@@ -1,0 +1,15 @@
+{
+  "name": "@openorca/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/main.ts",
+  "scripts": {
+    "test": "node --test test/*.test.ts",
+    "dev": "node --watch src/main.ts"
+  },
+  "dependencies": {
+    "@openorca/argocd": "workspace:*",
+    "zod": "^4.4.3"
+  }
+}

@@ -84,32 +84,43 @@ async function main() {
   //    the Rollout image through the app's managed resource. Simplest: set image via kubectl-free path —
   //    ArgoCD's resource actions don't include set-image, so we edit the live resource via PATCH RPC on
   //    the managed resource. Use the app's managedResources patch endpoint.
-  const roFull = await api(
-    "GET",
-    `/api/v1/applications/${APP}/resource?name=${ro.name}&namespace=${ro.namespace}&group=argoproj.io&version=v1alpha1&kind=Rollout`,
-  );
-  const manifest = JSON.parse(roFull.manifest);
-  const patch = [{ op: "replace", path: "/spec/template/spec/containers/0/image", value: "nginx:1.27.1-alpine" }];
+  // PatchResource is fiddly (SPEC §B B9). Two gotchas, both found by trial against a live server:
+  //   1. the resource is identified by `resourceName` in the QUERY STRING, not `name` (that's the app);
+  //   2. grpc-gateway binds the request BODY to the proto's `patch` field, which is a plain STRING —
+  //      so the body must be a JSON-encoded *string* (a bare `"..."`), not an object. Sending
+  //      `{patch: "..."}` returns "cannot unmarshal object into Go value of type string".
+  const mergePatch = JSON.stringify({
+    spec: { template: { spec: { containers: [{ name: "demo", image: "nginx:1.27.1-alpine" }] } } },
+  });
   await api(
     "POST",
-    `/api/v1/applications/${APP}/resource?name=${ro.name}&namespace=${ro.namespace}&group=argoproj.io&version=v1alpha1&kind=Rollout&patchType=application/json-patch%2Bjson`,
-    { patch: JSON.stringify(patch) },
+    `/api/v1/applications/${APP}/resource?resourceName=${encodeURIComponent(ro.name)}` +
+      `&namespace=${encodeURIComponent(ro.namespace)}&group=argoproj.io&version=v1alpha1&kind=Rollout` +
+      `&patchType=application/merge-patch%2Bjson`,
+    mergePatch, // api() JSON-encodes this string → a bare JSON string body, as the gateway expects
   );
   console.log("==> bumped image to v2 — canary should start and pause at setWeight:50");
 
-  // 4. wait for the canary to be Progressing/Paused (something recall can abort)
-  await waitFor("Rollout Progressing/Paused on canary", async () => {
+  // 4. wait for the canary to be mid-flight (something recall can abort).
+  // NOTE: Argo CD maps a canary parked on a `pause` step to health status "Suspended"
+  // (message CanaryPauseStep) — NOT "Paused"/"Progressing" (SPEC §B B10).
+  await waitFor("Rollout mid-canary (Suspended/Progressing)", async () => {
     const n = await rolloutNode();
-    return n && (n.health?.status === "Progressing" || n.health?.status === "Paused") ? n : null;
+    const s = n?.health?.status;
+    return s === "Suspended" || s === "Progressing" ? n : null;
   });
   console.log("==> canary in progress (recall has something to abort)");
 
   // 5. RECALL via the SAME action the tool uses (V4): actions/v2 abort
-  await api(
-    "POST",
-    `/api/v1/applications/${APP}/resource/actions/v2?resourceName=${ro.name}&namespace=${ro.namespace}&group=argoproj.io&kind=Rollout&version=v1alpha1`,
-    { action: "abort", resourceName: ro.name, namespace: ro.namespace },
-  );
+  await api("POST", `/api/v1/applications/${APP}/resource/actions/v2`, {
+    name: APP,
+    namespace: ro.namespace,
+    resourceName: ro.name,
+    version: "v1alpha1",
+    group: "argoproj.io",
+    kind: "Rollout",
+    action: "abort",
+  });
   const aborted = await waitFor("Rollout aborted (Degraded)", async () => {
     const n = await rolloutNode();
     return n?.health?.status === "Degraded" ? n : null;
@@ -117,16 +128,24 @@ async function main() {
   console.log(`==> RECALL ok: Rollout ${aborted.name} is Degraded (aborted) — expected post-recall state (V6)`);
 
   // 6. ROLL FORWARD: retry (clear abort) then promote-full
-  await api(
-    "POST",
-    `/api/v1/applications/${APP}/resource/actions/v2?resourceName=${ro.name}&namespace=${ro.namespace}&group=argoproj.io&kind=Rollout&version=v1alpha1`,
-    { action: "retry", resourceName: ro.name, namespace: ro.namespace },
-  );
-  await api(
-    "POST",
-    `/api/v1/applications/${APP}/resource/actions/v2?resourceName=${ro.name}&namespace=${ro.namespace}&group=argoproj.io&kind=Rollout&version=v1alpha1`,
-    { action: "promote-full", resourceName: ro.name, namespace: ro.namespace },
-  );
+  await api("POST", `/api/v1/applications/${APP}/resource/actions/v2`, {
+    name: APP,
+    namespace: ro.namespace,
+    resourceName: ro.name,
+    version: "v1alpha1",
+    group: "argoproj.io",
+    kind: "Rollout",
+    action: "retry",
+  });
+  await api("POST", `/api/v1/applications/${APP}/resource/actions/v2`, {
+    name: APP,
+    namespace: ro.namespace,
+    resourceName: ro.name,
+    version: "v1alpha1",
+    group: "argoproj.io",
+    kind: "Rollout",
+    action: "promote-full",
+  });
   await waitFor("Rollout Healthy after promote-full", async () => {
     const n = await rolloutNode();
     return n?.health?.status === "Healthy" ? n : null;

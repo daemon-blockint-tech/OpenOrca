@@ -8,6 +8,15 @@ importers:
 
   .: {}
 
+  apps/api:
+    dependencies:
+      '@openorca/argocd':
+        specifier: workspace:*
+        version: link:../../packages/argocd
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+
   packages/agents:
     dependencies:
       '@langchain/core':
