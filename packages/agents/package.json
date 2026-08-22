@@ -14,6 +14,7 @@
     "deepagents": "^1.13.1",
     "@langchain/core": "^1.2.9",
     "@langchain/langgraph": "^1.4.12",
+    "@langchain/openai": "^1.2.0",
     "langchain": "^1.5.10",
     "zod": "^4.4.3"
   }

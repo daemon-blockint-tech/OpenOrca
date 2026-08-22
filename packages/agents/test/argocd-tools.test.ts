@@ -117,3 +117,56 @@ test("a failed audit write does not mask a succeeded fleet action, but is surfac
   assert.equal(out.audited, false);
   assert.match(out.auditError, /typedb down/);
 });
+
+// AC2 (V1): a destructive tool call must HOLD at an interrupt — the fleet action must NOT
+// execute until a human resumes. Proven with a real deepagents agent + checkpointer:
+//   invoke -> __interrupt__ present AND argocd.runResourceAction NOT called
+//   Command(resume) -> action runs exactly once.
+import { MemorySaver } from "@langchain/langgraph-checkpoint";
+import { Command } from "@langchain/langgraph";
+import { FakeListChatModel } from "@langchain/core/utils/testing";
+
+test("rollout_recall execution is HELD at interrupt until human resume (V1, AC2)", async () => {
+  let executed = 0;
+  const tools = createArgoCDTools(
+    fakeArgo({
+      runResourceAction: async (_a: string, action: string) => { executed++; return { action }; },
+    }),
+    fakeOntology,
+  );
+  // Scripted model: turn 1 emits the rollout_recall tool call; after resume it just answers.
+  const model = new FakeListChatModel({
+    responses: [
+      {
+        content: "",
+        tool_calls: [{
+          name: "rollout_recall",
+          args: { app: "payments", resourceName: "payments-ro", namespace: "svc-payments" },
+          id: "call-ac2", type: "tool_call",
+        }],
+      },
+      { content: 'recall done: {"recalled":true,"expectedPhase":"Degraded"}' },
+    ],
+  });
+  const checkpointer = new MemorySaver();
+  const agent = createDeepAgent({
+    model: model as never,
+    tools: Object.values(tools),
+    interruptOn: INTERRUPT_ON,
+    checkpointer,
+  });
+  const cfg = { configurable: { thread_id: "hitl-ac2" } };
+
+  const first = await agent.invoke(
+    { messages: [{ role: "user", content: "recall payments-ro in svc-payments on app payments" }] },
+    cfg,
+  );
+  const interrupts = (first as Record<string, unknown>).__interrupt__;
+  assert.ok(Array.isArray(interrupts) && interrupts.length > 0, "must halt with __interrupt__");
+  assert.equal(executed, 0, "fleet action MUST NOT run before resume");
+
+  const resumed = await agent.invoke(new Command({ resume: { decisions: [{ type: "approve" }] } }), cfg);
+  assert.equal(executed, 1, "fleet action runs exactly once after human resume");
+  const text = JSON.stringify(resumed.messages?.at(-1)?.content ?? resumed);
+  assert.match(text, /recalled|Degraded/, "post-resume result reports the recall outcome");
+});
