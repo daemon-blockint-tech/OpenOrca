@@ -27,3 +27,22 @@ export {
   type DetectResult,
   type HuntDeps,
 } from "./hunt/pipeline.ts";
+export { dedupFindings, type CorrelationPair, type DedupResult } from "./triage/dedup.ts";
+export {
+  routeFinding,
+  routeOpenFindings,
+  resolveTarget,
+  isSuppressed,
+  isDuplicate,
+  type RouteDecision,
+  type RouteTarget,
+} from "./triage/validate.ts";
+export {
+  recordAdjudication,
+  suppressionList,
+  type AdjudicationInput,
+  type AdjudicationResult,
+  type SuppressionEntry,
+  type Verdict,
+} from "./triage/learn.ts";
+export { unifiedReport, type UnifiedFinding, type Severity } from "./triage/report.ts";
