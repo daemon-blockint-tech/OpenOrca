@@ -48,6 +48,30 @@ async function rolloutNode() {
 }
 
 async function main() {
+  // 0. RESET: pastikan Rollout mulai dari Healthy. Urutan penting dgn autosync ON +
+  //    pause tanpa durasi (steps: setWeight:50, pause:{}): retry clears abort → sync
+  //    konvergen live ke git → promote-full melewati pause tak-terhingga. Tanpa sync,
+  //    promote-full selesai lalu autosync langsung picu canary baru yang parkir lagi.
+  const pre = await rolloutNode().catch(() => null);
+  if (pre && pre.health?.status !== "Healthy") {
+    console.log(`==> resetting Rollout (current: ${pre.health?.status})`);
+    const act = (action) =>
+      api("POST", `/api/v1/applications/${APP}/resource/actions/v2`, {
+        name: APP, namespace: NS, resourceName: "demo",
+        version: "v1alpha1", group: "argoproj.io", kind: "Rollout", action,
+      }).catch(() => {});
+    await act("retry");
+    await api("POST", `/api/v1/applications/${APP}/sync`, { name: APP }).catch(() => {});
+    // Tunggu revisi baru dari sync parkir (Suspended/pause) ATAU langsung Healthy —
+    // promote-full sebelum parkir = mempromosikan revisi lama, canary baru tetap parkir.
+    await waitFor("Rollout parked or healthy", async () => {
+      const n = await rolloutNode();
+      const s = n?.health?.status;
+      return s === "Healthy" || s === "Suspended" ? n : null;
+    });
+    await act("promote-full");
+  }
+
   // 1. ensure the Application exists (create via API — the machine account has applications,* on openorca/*)
   const exists = await api("GET", `/api/v1/applications/${APP}`).then(() => true).catch(() => false);
   if (!exists) {
@@ -89,8 +113,18 @@ async function main() {
   //   2. grpc-gateway binds the request BODY to the proto's `patch` field, which is a plain STRING —
   //      so the body must be a JSON-encoded *string* (a bare `"..."`), not an object. Sending
   //      `{patch: "..."}` returns "cannot unmarshal object into Go value of type string".
+  // Bump ke image yang BERBEDA dari current — patch sama = no-op, canary takkan terpicu
+  // (ditemukan saat review OO-003: run kedua selalu timeout di "mid-canary").
+  const IMAGES = ["nginx:1.27.0-alpine", "nginx:1.27.1-alpine", "nginx:1.26.3-alpine"];
+  const currentImage = (await api(
+    "GET",
+    `/api/v1/applications/${APP}/managed-resources?resourceName=${encodeURIComponent(ro.name)}` +
+      `&namespace=${encodeURIComponent(ro.namespace)}`,
+    ).then((r) => JSON.parse(r.items?.[0]?.live?.[0] ?? "{}").spec?.template?.spec?.containers?.[0]?.image)
+    .catch(() => undefined)) ?? "";
+  const targetImage = IMAGES.find((i) => i !== currentImage) ?? IMAGES[0];
   const mergePatch = JSON.stringify({
-    spec: { template: { spec: { containers: [{ name: "demo", image: "nginx:1.27.1-alpine" }] } } },
+    spec: { template: { spec: { containers: [{ name: "demo", image: targetImage }] } } },
   });
   await api(
     "POST",
@@ -99,7 +133,7 @@ async function main() {
       `&patchType=application/merge-patch%2Bjson`,
     mergePatch, // api() JSON-encodes this string → a bare JSON string body, as the gateway expects
   );
-  console.log("==> bumped image to v2 — canary should start and pause at setWeight:50");
+  console.log(`==> bumped image to ${targetImage} (was: ${currentImage || "?"}) — canary should start and pause at setWeight:50`);
 
   // 4. wait for the canary to be mid-flight (something recall can abort).
   // NOTE: Argo CD maps a canary parked on a `pause` step to health status "Suspended"

@@ -24,6 +24,26 @@ export interface AppStatus {
   rolloutPaused: boolean;
 }
 
+/** One row of the fleet listing (kit-agent-tools.md §fleet_list). */
+export interface FleetApp {
+  app: string;
+  /** From the `openorca.io/service` label — the join key to `service` in the context graph. */
+  service?: string;
+  /** Destination cluster: `spec.destination.name` if set, else `.server`. */
+  cluster?: string;
+  namespace?: string;
+  project?: string;
+  syncStatus: string;
+  healthStatus: string;
+}
+
+export interface ListAppsOptions {
+  /** Kubernetes label selector, e.g. `openorca.io/managed=true` (filtered server-side). */
+  selector?: string;
+  /** Restrict to these Argo CD projects (filtered server-side). */
+  projects?: string[];
+}
+
 export class ArgoCDError extends Error {
   readonly status: number;
   constructor(status: number, message: string) {
@@ -83,6 +103,45 @@ export class ArgoCDClient {
   /** Raw Application object. */
   getApp(name: string): Promise<unknown> {
     return this.#req("GET", `/api/v1/applications/${encodeURIComponent(name)}`);
+  }
+
+  /**
+   * List Applications, filtered SERVER-SIDE (verified live: `selector` and `projects` are real
+   * ApplicationQuery fields on the List RPC — filtering here rather than fetching everything and
+   * filtering in JS keeps the payload small and the RBAC boundary honest).
+   * Default selector is the fleet label from kit-fleet.md's ApplicationSet template.
+   */
+  async listApps(options: ListAppsOptions = {}): Promise<FleetApp[]> {
+    const { selector = "openorca.io/managed=true", projects } = options;
+    const params = new URLSearchParams();
+    if (selector) params.set("selector", selector);
+    for (const p of projects ?? []) params.append("projects", p);
+    const qs = params.toString();
+
+    const res = (await this.#req(
+      "GET",
+      `/api/v1/applications${qs ? `?${qs}` : ""}`,
+    )) as {
+      items?: Array<{
+        metadata?: { name?: string; labels?: Record<string, string> };
+        spec?: {
+          project?: string;
+          destination?: { server?: string; name?: string; namespace?: string };
+        };
+        status?: { sync?: { status?: string }; health?: { status?: string } };
+      }> | null;
+    };
+
+    // `items` is null (not []) when nothing matches — a real shape, seen live.
+    return (res.items ?? []).map((it) => ({
+      app: it.metadata?.name ?? "",
+      service: it.metadata?.labels?.["openorca.io/service"],
+      cluster: it.spec?.destination?.name ?? it.spec?.destination?.server,
+      namespace: it.spec?.destination?.namespace,
+      project: it.spec?.project,
+      syncStatus: it.status?.sync?.status ?? "Unknown",
+      healthStatus: it.status?.health?.status ?? "Unknown",
+    }));
   }
 
   /** Resource tree (used to detect a managed Rollout and its abort state). */

@@ -113,6 +113,75 @@ test("setAutosync(false) sends a merge patch with automated:null", async () => {
   } finally { restore(); }
 });
 
+test("listApps filters SERVER-SIDE via selector + projects query params", async () => {
+  const { calls, restore } = withFetch(() => new Response(JSON.stringify({ items: [] }), { status: 200 }));
+  try {
+    await client().listApps({ selector: "openorca.io/service=payments", projects: ["openorca", "other"] });
+    const url = new URL(calls[0]!.url);
+    assert.equal(url.pathname, "/api/v1/applications");
+    assert.equal(url.searchParams.get("selector"), "openorca.io/service=payments");
+    // `projects` is `repeated string` in ApplicationQuery — must repeat the key, not join with commas.
+    assert.deepEqual(url.searchParams.getAll("projects"), ["openorca", "other"]);
+  } finally { restore(); }
+});
+
+test("listApps defaults to the fleet label selector from kit-fleet's ApplicationSet template", async () => {
+  const { calls, restore } = withFetch(() => new Response(JSON.stringify({ items: [] }), { status: 200 }));
+  try {
+    await client().listApps();
+    assert.equal(new URL(calls[0]!.url).searchParams.get("selector"), "openorca.io/managed=true");
+  } finally { restore(); }
+});
+
+test("listApps maps Applications to compact fleet rows (real live shape)", async () => {
+  // Body copied from an actual live response (demo-app, labelled by the ApplicationSet template).
+  const { restore } = withFetch(() =>
+    new Response(JSON.stringify({
+      items: [{
+        metadata: { name: "demo-app", labels: { "openorca.io/managed": "true", "openorca.io/service": "demo" } },
+        spec: { project: "openorca", destination: { server: "https://kubernetes.default.svc", namespace: "svc-demo" } },
+        status: { sync: { status: "Synced" }, health: { status: "Healthy" } },
+      }],
+    }), { status: 200 }),
+  );
+  try {
+    const apps = await client().listApps();
+    assert.deepEqual(apps, [{
+      app: "demo-app",
+      service: "demo",
+      cluster: "https://kubernetes.default.svc",
+      namespace: "svc-demo",
+      project: "openorca",
+      syncStatus: "Synced",
+      healthStatus: "Healthy",
+    }]);
+  } finally { restore(); }
+});
+
+test("listApps handles items:null (the real empty-match shape) without throwing", async () => {
+  const { restore } = withFetch(() => new Response(JSON.stringify({ items: null }), { status: 200 }));
+  try {
+    assert.deepEqual(await client().listApps(), []);
+  } finally { restore(); }
+});
+
+test("listApps prefers destination.name over .server when both are present", async () => {
+  const { restore } = withFetch(() =>
+    new Response(JSON.stringify({
+      items: [{
+        metadata: { name: "a" },
+        spec: { destination: { name: "prod-eu", server: "https://kubernetes.default.svc" } },
+        status: {},
+      }],
+    }), { status: 200 }),
+  );
+  try {
+    const [app] = await client().listApps();
+    assert.equal(app!.cluster, "prod-eu");
+    assert.equal(app!.syncStatus, "Unknown", "missing status must degrade to Unknown, not undefined");
+  } finally { restore(); }
+});
+
 test("a non-2xx response throws ArgoCDError carrying status and server message", async () => {
   const { restore } = withFetch(() => new Response(JSON.stringify({ message: "another operation is already in progress" }), { status: 400 }));
   try {

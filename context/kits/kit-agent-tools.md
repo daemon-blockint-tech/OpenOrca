@@ -55,8 +55,13 @@ rollout_promote   | destruk | !    | !        | action=promote-full
 - args: sama dgn recall, `action: "promote-full"`. HITL !.
 
 ### fleet_list
-- args: `{ selector?: string }`.
-- return: `[{ app, service, cluster, syncStatus, healthStatus }]`.
+- args: `{ selector?: string, project?: string }`.
+- return: `{ count, apps: [{ app, service?, cluster?, namespace?, project?, syncStatus, healthStatus }] }`.
+- Filter di SISI SERVER (`selector` + `projects` = field asli `ApplicationQuery` pada RPC List, terverifikasi live) — ⊥ tarik semua lalu filter di JS.
+- Default `selector` = `openorca.io/managed=true` (label dari template ApplicationSet, kit-fleet.md). Kirim `selector: ""` utk melepas filter label.
+- `service` diambil dari label `openorca.io/service` → **join key** ke entity `service` di graph; ⊥ ada label = field absen (bukan error).
+- `cluster` = `spec.destination.name` kalau ada, else `.server`.
+- Sengaja ringkas (1 baris/app, ⊥ resource tree) — detail Rollout per-app lewat `argocd_app_status` (deepagents evict hasil tool >20k token).
 
 ## Wiring deepagents
 

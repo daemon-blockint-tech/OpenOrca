@@ -42,6 +42,32 @@ test("INTERRUPT_ON flags exactly the four destructive tools (V1)", () => {
   assert.equal(INTERRUPT_ON["fleet_list"], undefined);
 });
 
+test("fleet_list returns real rows from the client and passes filters through", async () => {
+  const seen: unknown[] = [];
+  const rows = [
+    { app: "demo-app", service: "demo", cluster: "https://k8s.local", namespace: "svc-demo", project: "openorca", syncStatus: "Synced", healthStatus: "Healthy" },
+  ];
+  const tools = createArgoCDTools(
+    fakeArgo({ listApps: async (opts: unknown) => { seen.push(opts); return rows; } }),
+    fakeOntology,
+  );
+  const out = JSON.parse(String(await tools.fleetList.invoke({ selector: "openorca.io/service=demo", project: "openorca" })));
+  assert.equal(out.count, 1);
+  assert.deepEqual(out.apps, rows, "must return real app rows, not a placeholder hint");
+  assert.deepEqual(seen[0], { selector: "openorca.io/service=demo", projects: ["openorca"] });
+});
+
+test("fleet_list omits unset filters so the client's default selector applies", async () => {
+  const seen: unknown[] = [];
+  const tools = createArgoCDTools(
+    fakeArgo({ listApps: async (opts: unknown) => { seen.push(opts); return []; } }),
+    fakeOntology,
+  );
+  const out = JSON.parse(String(await tools.fleetList.invoke({})));
+  assert.equal(out.count, 0);
+  assert.deepEqual(seen[0], {}, "no selector/projects keys — the client owns the default");
+});
+
 test("argocd_rollback refuses a Rollout-managed app and points to rollout_recall (V4)", async () => {
   const tools = createArgoCDTools(
     fakeArgo({ appStatus: async () => ({ name: "x", syncStatus: "Synced", healthStatus: "Healthy", autosyncEnabled: true, hasRollout: true, rolloutAborted: false }) }),

@@ -65,15 +65,30 @@ export function createArgoCDTools(argocd: ArgoCDClient, ontology: OntologyClient
   );
 
   const fleetList = tool(
-    async ({ selector }: { selector?: string }) => {
-      // Thin wrapper — the client's getApp is per-app; a real fleet list would hit /applications.
-      // Kept minimal: callers pass explicit app names elsewhere. Returns the raw list.
-      return JSON.stringify({ note: "use argocd_app_status per app", selector: selector ?? null });
+    async ({ selector, project }: { selector?: string; project?: string }) => {
+      const apps = await argocd.listApps({
+        ...(selector ? { selector } : {}),
+        ...(project ? { projects: [project] } : {}),
+      });
+      // Compact by design: one row per app, no resource trees. An agent that needs Rollout detail
+      // for a specific app calls argocd_app_status next (deepagents evicts >20k-token results).
+      return JSON.stringify({ count: apps.length, apps });
     },
     {
       name: "fleet_list",
-      description: "List OpenOrca-managed Applications (label openorca.io/managed=true).",
-      schema: z.object({ selector: z.string().optional() }),
+      description:
+        "List the OpenOrca-managed fleet: one compact row per Argo CD Application " +
+        "(app, service, cluster, namespace, project, syncStatus, healthStatus). " +
+        "Defaults to the label selector openorca.io/managed=true; pass `selector` to override or " +
+        "`project` to scope to one Argo CD project. Use `service` to join back to the context graph, " +
+        "and argocd_app_status for per-app Rollout detail.",
+      schema: z.object({
+        selector: z
+          .string()
+          .optional()
+          .describe("Kubernetes label selector, e.g. 'openorca.io/service=payments'"),
+        project: z.string().optional().describe("Argo CD project name, e.g. 'openorca'"),
+      }),
     },
   );
 
