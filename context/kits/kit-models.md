@@ -25,6 +25,7 @@ alibaba-tongyi | B    | @langchain/community      | qwen-max, qwen-plus        |
 openrouter     | B    | @langchain/openai (compat)| openrouter/anthropic/... , meta-llama/*  | OPENROUTER_API_KEY
 lmstudio       | B    | @langchain/openai (compat)| model lokal apa pun         | — (local, LMSTUDIO_BASE_URL)
 huggingface    | B    | @langchain/openai (compat)| model apa pun di HF Hub    | HF_TOKEN
+ngodeai        | B    | @langchain/openai (compat)| ngodeai/laguna-s-2.1-free, nemotron-3.5-lightning-free (live-verified tool-calling 2026-08-22; daftar live lihat GET /v1/models — banyak entri katalog 402/502) | NGODEAI_API_KEY
 ```
 
 Mode B = **OpenAI-compatible baseURL** (bukan paket dedicated per-provider) — pola paling stabil utk endpoint yang mem-mirror OpenAI Chat Completions API. ⊥ ada paket resmi utk OpenRouter/LM Studio (mereka memang didesain drop-in OpenAI-compat); HuggingFace dipakai via **Inference Providers router** (`router.huggingface.co/v1`, OpenAI-compatible) — bukan `HuggingFaceInference` lama di `@langchain/community` yang cuma text-completion & lemah di tool-calling (kritikal krn deepagents butuh tool calling utk semua tool: `ontology_query`, `argocd_sync`, dst).

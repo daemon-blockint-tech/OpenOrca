@@ -12,6 +12,7 @@ export const PROVIDER_KEYS = [
   "openrouter",
   "lmstudio",
   "huggingface",
+  "ngodeai",
 ] as const;
 
 export type ProviderKey = (typeof PROVIDER_KEYS)[number];
@@ -50,6 +51,10 @@ export function resolveModel(provider: ProviderKey, modelId: string): string | C
       });
     case "huggingface":
       return openAICompat(modelId, "https://router.huggingface.co/v1", process.env.HF_TOKEN, "HF_TOKEN");
+    case "ngodeai":
+      return openAICompat(modelId, "https://llm.ngodeai.net/v1", process.env.NGODEAI_API_KEY, "NGODEAI_API_KEY");
+    case "ngodeai":
+      return openAICompat(modelId, "https://llm.ngodeai.net/v1", process.env.NGODEAI_API_KEY, "NGODEAI_API_KEY");
     case "alibaba-tongyi": {
       const key = process.env.ALIBABA_API_KEY;
       if (!key) throw new Error("resolveModel: env ALIBABA_API_KEY belum di-set");
