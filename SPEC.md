@@ -64,7 +64,7 @@ V19: checkpointer produksi = Postgres (self-hosted); MemorySaver/SqliteSaver ⊥
 
 ```
 id|status|task|cites
-T1|~|dev infra: TypeDB 3.x (docker) + kind + ArgoCD + Rollouts, script bootstrap — 5/6 AC live-terverifikasi (OO-001 active), AC6 (teardown) pending konfirmasi destruktif|I.env
+T1|x|dev infra: TypeDB 3.x (docker) + kind + ArgoCD + Rollouts, script bootstrap — DONE 2026-08-22, 6/6 AC live-terverifikasi (OO-001)|I.env
 T2|x|apply schema.tql + functions ke db openorca — DONE 2026-08-22, live: db `openorca`, blast(A) siklus A-B-C-A → {A,B,C} 0.028s; agent-action direfaktor jadi abstract relation (B5), query per-kind terstruktur terverifikasi|V7,kit-ontology
 T3|.|lib client TypeDB HTTP (signin, retry AUT3, one-shot query, deteksi 206)|V2,V3,I.api
 T4|.|tools ontology_query + ontology_write|V2,V7,V9,I.tools

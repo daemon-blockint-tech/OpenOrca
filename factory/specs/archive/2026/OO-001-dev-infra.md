@@ -24,7 +24,7 @@ SPEC §T1. Fondasi lokal utk semua task lain. TypeDB v3 via docker (host port 17
 3. `POST /v1/signin` dgn `admin/password` → token. **✓ terverifikasi live — JWT diterima.**
 4. `pg_isready` sukses; `psql` bisa connect dgn kredensial `versions.env`/compose. **✓ terverifikasi live.**
 5. ArgoCD API server reachable via port-forward; `argocd version` sukses. **✓ terverifikasi live — port-forward + `argocd login` + `healthz` 200.**
-6. `scripts/dev-down.sh` bersih total. **⏸ pending — destruktif thd state live (kind cluster+ArgoCD+data), tunggu konfirmasi eksplisit user sebelum eksekusi.**
+6. `scripts/dev-down.sh` bersih total. **✓ terverifikasi live 2026-08-22 — kind cluster hilang, nol container `openorca-*` sisa, network removed, exit 0.**
 
 # Constraints
 
